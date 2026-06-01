@@ -425,11 +425,22 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
   const [uploading, setUploading] = useState(false);
   const LEEG_INC = { datum: TODAY, behandeling: "", klant: "", betaalwijze: "", prijs: "", bonPad: "" };
   const [form, setForm] = useState(LEEG_INC);
+  const [btwModus, setBtwModus] = useState("incl"); // "incl" of "excl"
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Bereken altijd de drie waarden vanuit het ingevoerde bedrag + modus
+  const berekenBtw = (invoer, modus) => {
+    const n = parseFloat(invoer) || 0;
+    if (modus === "excl") {
+      return { prijs: +(n * 1.21).toFixed(2), btw: +(n * 0.21).toFixed(2), exclBtw: n };
+    }
+    return { prijs: n, btw: +(n / 1.21 * 0.21).toFixed(2), exclBtw: +(n / 1.21).toFixed(2) };
+  };
+
   const openEdit = (item) => {
     setEditItem(item);
+    setBtwModus("incl");
     setForm({ datum: item.datum, behandeling: item.behandeling, klant: item.klant || "",
       betaalwijze: item.betaalwijze || "", prijs: item.prijs, bonPad: item.bonPad || "" });
     setModal(true);
@@ -438,18 +449,21 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
   const handleBeh = (naam) => {
     const p = prijslijst.find(x => x.naam === naam);
     set("behandeling", naam);
-    if (p?.prijs && !editItem) set("prijs", p.prijs);
+    if (p?.prijs && !editItem) {
+      setBtwModus("incl");
+      set("prijs", p.prijs);
+    }
   };
 
   const submit = () => {
     if (!form.behandeling || !form.prijs || !form.datum) return;
-    const prijs = parseFloat(form.prijs);
+    const { prijs, btw, exclBtw } = berekenBtw(form.prijs, btwModus);
     const item = { datum: form.datum, behandeling: form.behandeling,
       klant: form.klant, betaalwijze: form.betaalwijze, bonPad: form.bonPad,
-      prijs, btw: +(prijs / 1.21 * 0.21).toFixed(2), exclBtw: +(prijs / 1.21).toFixed(2) };
+      prijs, btw, exclBtw };
     if (editItem) { onEdit({ ...editItem, ...item }); }
     else { onAdd({ id: uid(), ...item }); }
-    setModal(false); setEditItem(null); setForm(LEEG_INC);
+    setModal(false); setEditItem(null); setForm(LEEG_INC); setBtwModus("incl");
   };
 
   const filtered = [...data]
@@ -515,13 +529,35 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
           options={prijslijst.filter(p => p.naam).map(p => ({
             value: p.naam, label: p.naam + (p.prijs ? ` — ${fmt(p.prijs)}` : ""),
           }))} />
-        <Input label="Prijs incl. BTW (€)" type="number" step="0.01" min="0"
-          value={form.prijs} onChange={e => set("prijs", e.target.value)} placeholder="0.00" />
-        {form.prijs > 0 && (
-          <div style={{ fontSize: 12, color: C.muted, marginTop: -10, marginBottom: 14 }}>
-            Excl. BTW: {fmt(form.prijs / 1.21)} · BTW: {fmt(form.prijs / 1.21 * 0.21)}
+        <Field label={`Prijs ${btwModus === "incl" ? "incl." : "excl."} BTW (€)`}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="number" step="0.01" min="0" value={form.prijs}
+              onChange={e => set("prijs", e.target.value)} placeholder="0.00"
+              style={{ ...inputStyle, flex: 1 }}
+              onFocus={e => e.target.style.borderColor = C.pink}
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+            <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1.5px solid rgba(255,255,255,0.15)", flexShrink: 0 }}>
+              {["incl", "excl"].map(m => (
+                <button key={m} onClick={() => setBtwModus(m)} type="button" style={{
+                  padding: "8px 12px", fontSize: 12, fontWeight: 700, border: "none",
+                  cursor: "pointer", fontFamily: "inherit",
+                  background: btwModus === m ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+                  color: btwModus === m ? "#fff" : C.muted,
+                }}>{m}</button>
+              ))}
+            </div>
           </div>
-        )}
+        </Field>
+        {form.prijs > 0 && (() => {
+          const { prijs, btw, exclBtw } = berekenBtw(form.prijs, btwModus);
+          return (
+            <div style={{ fontSize: 12, color: C.muted, marginTop: -10, marginBottom: 14, display: "flex", gap: 12 }}>
+              <span>Incl.: <span style={{ color: C.green, fontWeight: 700 }}>{fmt(prijs)}</span></span>
+              <span>Excl.: {fmt(exclBtw)}</span>
+              <span>BTW: {fmt(btw)}</span>
+            </div>
+          );
+        })()}
         <Select label="Klant (optioneel)" value={form.klant} onChange={e => set("klant", e.target.value)}
           options={klanten.map(k => ({ value: `${k.voornaam} ${k.achternaam}`.trim(), label: `${k.voornaam} ${k.achternaam}`.trim() }))} />
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)}
