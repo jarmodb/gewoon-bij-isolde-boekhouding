@@ -587,27 +587,37 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
   const [confirmId, setConfirmId] = useState(null);
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
-  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedragExcl: "", bonPad: "" };
+  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedrag: "", bonPad: "" };
   const [form, setForm] = useState(LEEG_UIT);
+  const [btwModus, setBtwModus] = useState("excl");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const berekenUit = (invoer, modus) => {
+    const n = parseFloat(invoer) || 0;
+    if (modus === "incl") {
+      return { bedragExcl: +(n / 1.21).toFixed(2), bedragIncl: n };
+    }
+    return { bedragExcl: n, bedragIncl: +(n * 1.21).toFixed(2) };
+  };
 
   const openEdit = (item) => {
     setEditItem(item);
+    setBtwModus("excl");
     setForm({ datum: item.datum, categorie: item.categorie, omschrijving: item.omschrijving || "",
       leverancier: item.leverancier || "", betaalwijze: item.betaalwijze || "",
-      bedragExcl: item.bedragExcl, bonPad: item.bonPad || "" });
+      bedrag: item.bedragExcl, bonPad: item.bonPad || "" });
     setModal(true);
   };
 
   const submit = () => {
-    if (!form.categorie || !form.bedragExcl || !form.datum) return;
-    const excl = parseFloat(form.bedragExcl);
+    if (!form.categorie || !form.bedrag || !form.datum) return;
+    const { bedragExcl, bedragIncl } = berekenUit(form.bedrag, btwModus);
     const item = { datum: form.datum, categorie: form.categorie, omschrijving: form.omschrijving,
       leverancier: form.leverancier, betaalwijze: form.betaalwijze, bonPad: form.bonPad,
-      bedragExcl: excl, bedragIncl: +(excl * 1.21).toFixed(2) };
+      bedragExcl, bedragIncl };
     if (editItem) { onEdit({ ...editItem, ...item }); }
     else { onAdd({ id: uid(), ...item }); }
-    setModal(false); setEditItem(null); setForm(LEEG_UIT);
+    setModal(false); setEditItem(null); setForm(LEEG_UIT); setBtwModus("excl");
   };
 
   const filtered = [...data]
@@ -674,17 +684,39 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
         <Input label="Datum" type="date" value={form.datum} onChange={e => set("datum", e.target.value)} />
         <Select label="Categorie" value={form.categorie} onChange={e => set("categorie", e.target.value)} options={CATEGORIES} />
         <Input label="Omschrijving" value={form.omschrijving} onChange={e => set("omschrijving", e.target.value)} placeholder="Bijv. OPI gels besteld" />
-        <Input label="Bedrag excl. BTW (€)" type="number" step="0.01" min="0"
-          value={form.bedragExcl} onChange={e => set("bedragExcl", e.target.value)} placeholder="0.00" />
-        {form.bedragExcl > 0 && (
-          <div style={{ fontSize: 12, color: C.muted, marginTop: -10, marginBottom: 14 }}>
-            Incl. BTW: {fmt(form.bedragExcl * 1.21)}
+        <Field label={`Bedrag ${btwModus === "incl" ? "incl." : "excl."} BTW (€)`}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="number" step="0.01" min="0" value={form.bedrag}
+              onChange={e => set("bedrag", e.target.value)} placeholder="0.00"
+              style={{ ...inputStyle, flex: 1 }}
+              onFocus={e => e.target.style.borderColor = C.pink}
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+            <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1.5px solid rgba(255,255,255,0.15)", flexShrink: 0 }}>
+              {["incl", "excl"].map(m => (
+                <button key={m} onClick={() => setBtwModus(m)} type="button" style={{
+                  padding: "8px 12px", fontSize: 12, fontWeight: 700, border: "none",
+                  cursor: "pointer", fontFamily: "inherit",
+                  background: btwModus === m ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+                  color: btwModus === m ? "#fff" : C.muted,
+                }}>{m}</button>
+              ))}
+            </div>
           </div>
-        )}
+        </Field>
+        {form.bedrag > 0 && (() => {
+          const { bedragExcl, bedragIncl } = berekenUit(form.bedrag, btwModus);
+          return (
+            <div style={{ fontSize: 12, color: C.muted, marginTop: -10, marginBottom: 14, display: "flex", gap: 12 }}>
+              <span>Incl.: <span style={{ color: C.red, fontWeight: 700 }}>{fmt(bedragIncl)}</span></span>
+              <span>Excl.: {fmt(bedragExcl)}</span>
+              <span>BTW: {fmt(bedragIncl - bedragExcl)}</span>
+            </div>
+          );
+        })()}
         <Select label="Leverancier" value={form.leverancier} onChange={e => set("leverancier", e.target.value)}
           options={leveranciers.map(l => ({ value: l.bedrijf, label: l.bedrijf }))} />
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)} options={BETAALWIJZE} />
-        <BonUpload type="uitgave" datum={form.datum} bedrag={form.bedragExcl}
+        <BonUpload type="uitgave" datum={form.datum} bedrag={form.bedrag}
           uploading={uploading} setUploading={setUploading}
           onUploaded={pad => set("bonPad", pad)} />
         {form.bonPad && (
@@ -692,7 +724,7 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
             ✓ Bewijsstuk opgeslagen op NAS
           </div>
         )}
-        <Btn onClick={submit} fullWidth disabled={!form.categorie || !form.bedragExcl || uploading} style={{ marginTop: 4 }}>
+        <Btn onClick={submit} fullWidth disabled={!form.categorie || !form.bedrag || uploading} style={{ marginTop: 4 }}>
           Opslaan
         </Btn>
       </Modal>
