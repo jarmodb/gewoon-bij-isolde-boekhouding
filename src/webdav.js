@@ -1,17 +1,21 @@
 // ── Bewijsstukken upload naar NUC via Tailscale Funnel ───────────────────────
-// Config wordt opgeslagen in Supabase (sync naar alle apparaten) én localStorage (offline fallback).
 
 export function getNucConfig() {
   try { return JSON.parse(localStorage.getItem("nuc_config") || "{}"); } catch { return {}; }
 }
-
 export function setNucConfig(config) {
   try { localStorage.setItem("nuc_config", JSON.stringify(config)); } catch {}
 }
 
-export async function uploadNaarNAS(bestand, type, datum, bedrag) {
-  const { serverUrl, apiKey } = getNucConfig();
+function schoonNaam(s) {
+  return (s || "").trim()
+    .replace(/[^a-zA-Z0-9À-ž\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 25);
+}
 
+export async function uploadNaarNAS(bestand, type, datum, bedrag, naam, omschrijving) {
+  const { serverUrl, apiKey } = getNucConfig();
   if (!serverUrl || !apiKey) {
     throw new Error("NUC server nog niet ingesteld — vul de URL en API-key in via Meer → Bewijsstukken.");
   }
@@ -19,9 +23,13 @@ export async function uploadNaarNAS(bestand, type, datum, bedrag) {
   const ext = bestand.name.split(".").pop().toLowerCase();
   const jaar = datum.slice(0, 4);
   const maand = datum.slice(5, 7);
-  const bedragStr = String(bedrag).replace(".", "-");
-  const uniek = Math.random().toString(36).slice(2, 7);
-  const bestandsnaam = `${type}_${datum}_${bedragStr}euro_${uniek}.${ext}`;
+  const bedragStr = Math.round(parseFloat(bedrag) || 0) + "euro";
+  const uniek = Math.random().toString(36).slice(2, 6);
+
+  // Bestandsnaam: 2026-06-01_inkomen_Marie-Jansen_Manicure_35euro_a1b2.jpg
+  const delen = [datum, type, schoonNaam(naam), schoonNaam(omschrijving), bedragStr, uniek]
+    .filter(Boolean).join("_");
+  const bestandsnaam = `${delen}.${ext}`;
 
   const formData = new FormData();
   formData.append("bestand", bestand);
@@ -47,6 +55,7 @@ export function getBewijsstukUrl(pad) {
   if (!pad) return null;
   const { serverUrl, apiKey } = getNucConfig();
   if (!serverUrl || !apiKey) return null;
+  // API-key als query param zodat window.open() werkt
   return `${serverUrl.replace(/\/$/, "")}/bestand/${pad}?key=${encodeURIComponent(apiKey)}`;
 }
 

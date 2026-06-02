@@ -383,14 +383,14 @@ function Dashboard({ inkomsten, uitgaven, kleuren }) {
 // INKOMSTEN
 // ════════════════════════════════════════════════════════════════════════════
 // ── Bon upload knop (gedeeld door Inkomsten en Uitgaven) ─────────────────────
-function BonUpload({ onUploaded, datum, bedrag, type, uploading, setUploading }) {
+function BonUpload({ onUploaded, datum, bedrag, type, uploading, setUploading, naam, omschrijving }) {
   const fileRef = useRef(null);
 
   const handleBestand = async (bestand) => {
     if (!bestand) return;
     setUploading(true);
     try {
-      const pad = await uploadNaarNAS(bestand, type, datum, bedrag);
+      const pad = await uploadNaarNAS(bestand, type, datum, bedrag, naam, omschrijving);
       onUploaded(pad);
     } catch (e) {
       alert("Upload mislukt: " + e.message);
@@ -568,6 +568,7 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)}
           options={BETAALWIJZE} />
         <BonUpload type="inkomen" datum={form.datum} bedrag={form.prijs}
+          naam={form.klant} omschrijving={form.behandeling}
           uploading={uploading} setUploading={setUploading}
           onUploaded={pad => set("bonPad", pad)} />
         {form.bonPad && (
@@ -727,6 +728,7 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
           options={leveranciers.map(l => ({ value: l.bedrijf, label: l.bedrijf }))} />
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)} options={BETAALWIJZE} />
         <BonUpload type="uitgave" datum={form.datum} bedrag={form.bedrag}
+          naam={form.leverancier} omschrijving={form.omschrijving}
           uploading={uploading} setUploading={setUploading}
           onUploaded={pad => set("bonPad", pad)} />
         {form.bonPad && (

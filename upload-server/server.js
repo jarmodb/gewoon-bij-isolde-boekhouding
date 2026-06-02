@@ -38,10 +38,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// API-key authenticatie
+// API-key authenticatie (header voor uploads, query param voor bestandsweergave)
 app.use((req, res, next) => {
-  if (req.path === "/health") return next(); // health check mag altijd
-  if (req.headers["x-api-key"] !== API_KEY) {
+  if (req.path === "/health") return next();
+  const keyHeader = req.headers["x-api-key"];
+  const keyQuery  = req.query.key;
+  if (keyHeader !== API_KEY && keyQuery !== API_KEY) {
     return res.status(401).json({ error: "Ongeldige API-key" });
   }
   next();
