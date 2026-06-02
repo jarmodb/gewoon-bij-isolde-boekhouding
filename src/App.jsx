@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { loadAll, saveAll, subscribeToChanges } from "./storage.js";
-import { uploadNaarNAS, WEBDAV_CONFIG } from "./webdav.js";
+import { uploadNaarNAS, getBewijsstukUrl } from "./webdav.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TREATMENTS = [
@@ -502,7 +502,12 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {item.betaalwijze && <Badge color="#6366f1">{item.betaalwijze}</Badge>}
                   <Badge color="#84cc16">excl. {fmt(item.exclBtw)}</Badge>
-                  {item.bonPad && <Badge color="#22c55e">📎 bon</Badge>}
+                  {item.bonPad && (
+                    <span onClick={() => { const u = getBewijsstukUrl(item.bonPad); if (u) window.open(u, "_blank"); }}
+                      style={{ cursor: "pointer" }}>
+                      <Badge color="#22c55e">📎 bon</Badge>
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -659,7 +664,12 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <Badge color={C.orange}>{item.categorie}</Badge>
                   {item.betaalwijze && <Badge color="#6366f1">{item.betaalwijze}</Badge>}
-                  {item.bonPad && <Badge color="#22c55e">📎 bon</Badge>}
+                  {item.bonPad && (
+                    <span onClick={() => { const u = getBewijsstukUrl(item.bonPad); if (u) window.open(u, "_blank"); }}
+                      style={{ cursor: "pointer" }}>
+                      <Badge color="#22c55e">📎 bon</Badge>
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -1529,23 +1539,19 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         </label>
       </Card>
 
-      {/* NAS instellingen */}
-      <Card style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}>
-        <SectionTitle>NAS instellingen (bewijsstukken)</SectionTitle>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.7 }}>
-          Bewijsstukken worden via WebDAV opgeslagen op je Synology NAS.
-          Zie de README voor hoe je WebDAV aanzet.
+      {/* Bewijsstukken opslag */}
+      <Card style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)" }}>
+        <SectionTitle>Bewijsstukken opslag</SectionTitle>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
+          <span style={{ fontSize: 13, color: C.green, fontWeight: 700 }}>Supabase Storage actief</span>
         </div>
-        <div style={{ fontSize: 12, marginBottom: 8 }}>
-          <span style={{ color: C.label }}>URL: </span>
-          <span style={{ color: WEBDAV_CONFIG.url?.includes("JOUW") ? C.red : C.green, fontFamily: "monospace" }}>
-            {WEBDAV_CONFIG.url?.includes("JOUW") ? "⚠️ Nog niet ingesteld" : WEBDAV_CONFIG.url}
-          </span>
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+          Foto's en PDF's worden veilig opgeslagen in de cloud — geen NAS of port forwarding nodig.
+          Bestanden blijven permanent bewaard (7+ jaar voor belastingdienst ✓).
         </div>
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-          Bestand opgeslagen als: <span style={{ color: "#e2d0f8", fontFamily: "monospace" }}>
-            /nagelsalon/bewijsstukken/2026/06/inkomen_2026-06-01_35euro.jpg
-          </span>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+          Opslag: bucket <span style={{ color: "#e2d0f8", fontFamily: "monospace" }}>bewijsstukken</span> · max 10MB per bestand · 1GB totaal
         </div>
       </Card>
     </div>

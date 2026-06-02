@@ -1,74 +1,33 @@
-// ── WebDAV NAS upload ─────────────────────────────────────────────────────────
+// ── Bewijsstukken opslag via Supabase Storage ─────────────────────────────
+// Vervangt de oude WebDAV/NAS aanpak — geen port forwarding of NAS nodig.
+// Bestanden worden opgeslagen in de Supabase bucket "bewijsstukken".
+// Max bestandsgrootte: 10MB. Bewaartermijn: permanent (7+ jaar belasting OK).
 
-export const WEBDAV_CONFIG = {
-  // Thuis (snel, via wifi):
-  urlThuis: "http://192.168.1.31:5005",
-  // Buitenshuis (via QuickConnect):
-  urlBuiten: "https://nas-jarmo.quickconnect.to:5006",
-  gebruiker: "JOUW_SYNOLOGY_GEBRUIKER",   // ← vervang dit
-  wachtwoord: "JOUW_SYNOLOGY_WACHTWOORD", // ← vervang dit
-  map: "/nagelsalon/bewijsstukken",
-};
+import { supabase } from "./storage.js";
 
-function authHeader(gebruiker, wachtwoord) {
-  return "Basic " + btoa(`${gebruiker}:${wachtwoord}`);
-}
-
-// Probeer thuis URL, val terug op buitenshuis URL
-async function getBeschikbareUrl(config) {
-  try {
-    const r = await fetch(config.urlThuis + "/", {
-      method: "OPTIONS",
-      headers: { Authorization: authHeader(config.gebruiker, config.wachtwoord) },
-      signal: AbortSignal.timeout(2000),
-    });
-    if (r.ok || r.status === 401 || r.status === 207) return config.urlThuis;
-  } catch {}
-  return config.urlBuiten;
-}
-
-async function maakMapAan(url, auth, pad) {
-  try {
-    await fetch(url + pad, {
-      method: "MKCOL",
-      headers: { Authorization: auth },
-    });
-  } catch {}
-}
+const BUCKET = "bewijsstukken";
 
 export async function uploadNaarNAS(bestand, type, datum, bedrag) {
-  const { gebruiker, wachtwoord, map } = WEBDAV_CONFIG;
-
-  if (gebruiker.includes("JOUW")) {
-    throw new Error("WebDAV nog niet ingesteld — vul gebruikersnaam en wachtwoord in via Meer → NAS instellingen.");
-  }
-
-  const auth = authHeader(gebruiker, wachtwoord);
-  const url = await getBeschikbareUrl(WEBDAV_CONFIG);
-
+  const ext = bestand.name.split(".").pop().toLowerCase();
   const jaar = datum.slice(0, 4);
   const maand = datum.slice(5, 7);
-  const basisMap = `${map}/${jaar}/${maand}`;
-
-  await maakMapAan(url, auth, map);
-  await maakMapAan(url, auth, `${map}/${jaar}`);
-  await maakMapAan(url, auth, basisMap);
-
-  const ext = bestand.name.split(".").pop().toLowerCase();
   const bedragStr = String(bedrag).replace(".", "-");
   const uniek = Math.random().toString(36).slice(2, 7);
-  const bestandsnaam = `${type}_${datum}_${bedragStr}euro_${uniek}.${ext}`;
-  const volledigPad = `${basisMap}/${bestandsnaam}`;
+  const pad = `${jaar}/${maand}/${type}_${datum}_${bedragStr}euro_${uniek}.${ext}`;
 
-  const r = await fetch(url + volledigPad, {
-    method: "PUT",
-    headers: {
-      Authorization: auth,
-      "Content-Type": bestand.type || "application/octet-stream",
-    },
-    body: bestand,
-  });
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(pad, bestand, { contentType: bestand.type || "application/octet-stream" });
 
-  if (!r.ok) throw new Error(`NAS upload mislukt (${r.status}). Controleer of WebDAV aanstaat.`);
-  return volledigPad;
+  if (error) throw new Error("Upload mislukt: " + error.message);
+  return pad;
 }
+
+export function getBewijsstukUrl(pad) {
+  if (!pad) return null;
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(pad);
+  return data?.publicUrl || null;
+}
+
+// Leeg object — was nodig voor de NAS-instellingen weergave in Meer
+export const WEBDAV_CONFIG = { url: "supabase-storage" };
