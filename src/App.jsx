@@ -1054,6 +1054,259 @@ function KleurenArchief({ data, onAdd, onDelete, onEdit }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// PLANNING
+// ════════════════════════════════════════════════════════════════════════════
+const PLAN_DAGEN = ["Ma","Di","Wo","Do","Vr","Za","Zo"];
+const PLAN_MAANDEN = ["Januari","Februari","Maart","April","Mei","Juni","Juli","Augustus","September","Oktober","November","December"];
+const STATUS_KLEUR = { gepland:"#6366f1", bevestigd:"#22c55e", voltooid:"#a855f7", geannuleerd:"#f87171" };
+
+function dagStr(d) { return d.toISOString().slice(0,10); }
+function weekMaandag(d) {
+  const r = new Date(d); const dw = r.getDay();
+  r.setDate(r.getDate() - (dw === 0 ? 6 : dw - 1)); return r;
+}
+
+function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien }) {
+  const [weergave, setWeergave] = useState("week");
+  const [peildatum, setPeildatum] = useState(new Date(TODAY));
+  const [modal, setModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const LEEG = { datum: TODAY, tijdstip: "10:00", duurMinuten: 60, klantNaam: "", behandeling: "", prijsIndicatie: "", notities: "", status: "gepland" };
+  const [form, setForm] = useState(LEEG);
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const openNieuw = (datum = TODAY) => { setEditItem(null); setForm({ ...LEEG, datum }); setModal(true); };
+  const openEdit = (a) => {
+    setEditItem(a);
+    setForm({ datum: a.datum, tijdstip: a.tijdstip, duurMinuten: a.duurMinuten,
+      klantNaam: a.klantNaam || "", behandeling: a.behandeling || "",
+      prijsIndicatie: a.prijsIndicatie || "", notities: a.notities || "", status: a.status || "gepland" });
+    setModal(true);
+  };
+  const submit = () => {
+    if (!form.datum || !form.tijdstip) return;
+    const item = { ...form, duurMinuten: parseInt(form.duurMinuten) || 60, prijsIndicatie: parseFloat(form.prijsIndicatie) || 0 };
+    if (editItem) onEdit({ ...editItem, ...item });
+    else onAdd({ id: uid(), ...item });
+    setModal(false); setEditItem(null); setForm(LEEG);
+  };
+
+  const navPeriode = (dir) => {
+    const d = new Date(peildatum);
+    if (weergave === "maand") d.setMonth(d.getMonth() + dir);
+    else d.setDate(d.getDate() + 7 * dir);
+    setPeildatum(d);
+  };
+
+  const opDag = (str) => afspraken.filter(a => a.datum === str).sort((a, b) => a.tijdstip.localeCompare(b.tijdstip));
+
+  const periodeLabel = weergave === "maand"
+    ? `${PLAN_MAANDEN[peildatum.getMonth()]} ${peildatum.getFullYear()}`
+    : (() => {
+        const s = weekMaandag(peildatum); const e = new Date(s); e.setDate(e.getDate() + 6);
+        return `${s.getDate()} ${PLAN_MAANDEN[s.getMonth()]} – ${e.getDate()} ${PLAN_MAANDEN[e.getMonth()]} ${e.getFullYear()}`;
+      })();
+
+  const printAfspraken = weergave === "maand"
+    ? afspraken.filter(a => { const d = new Date(a.datum); return d.getMonth() === peildatum.getMonth() && d.getFullYear() === peildatum.getFullYear(); })
+        .sort((a, b) => a.datum.localeCompare(b.datum) || a.tijdstip.localeCompare(b.tijdstip))
+    : (() => {
+        const s = dagStr(weekMaandag(peildatum)); const e = new Date(weekMaandag(peildatum)); e.setDate(e.getDate() + 6);
+        return afspraken.filter(a => a.datum >= s && a.datum <= dagStr(e))
+          .sort((a, b) => a.datum.localeCompare(b.datum) || a.tijdstip.localeCompare(b.tijdstip));
+      })();
+
+  const AfspraakKaart = ({ a }) => (
+    <Card style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: "#fff" }}>{a.tijdstip}</span>
+            <span style={{ fontSize: 11, color: C.muted }}>{a.duurMinuten} min</span>
+            <Badge color={STATUS_KLEUR[a.status] || C.purple}>{a.status}</Badge>
+          </div>
+          {a.klantNaam && <div style={{ fontSize: 14, fontWeight: 700, color: "#e2d0f8" }}>{a.klantNaam}</div>}
+          {a.behandeling && <div style={{ fontSize: 12, color: C.muted }}>{a.behandeling}{a.prijsIndicatie ? ` · ${fmt(a.prijsIndicatie)}` : ""}</div>}
+          {a.notities && <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 4 }}>{a.notities}</div>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginLeft: 8, flexShrink: 0 }}>
+          <button onClick={() => openEdit(a)} style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
+          {(a.status === "gepland" || a.status === "bevestigd") && (
+            <button onClick={() => onVoltooien(a)} title="Voltooien + inkomen aanmaken"
+              style={{ background: "none", border: "none", color: "rgba(34,197,94,0.8)", cursor: "pointer", fontSize: 15 }}>✅</button>
+          )}
+          <button onClick={() => setConfirmId(a.id)} style={{ background: "none", border: "none", color: "rgba(248,113,113,0.5)", cursor: "pointer", fontSize: 15 }}>🗑</button>
+        </div>
+      </div>
+    </Card>
+  );
+
+  const WeekView = () => {
+    const ma = weekMaandag(peildatum);
+    const dagen = Array.from({ length: 7 }, (_, i) => { const d = new Date(ma); d.setDate(d.getDate() + i); return d; });
+    return (
+      <div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 12 }}>
+          {dagen.map(d => {
+            const s = dagStr(d); const isVandaag = s === TODAY; const n = opDag(s).length;
+            return (
+              <div key={s} onClick={() => openNieuw(s)} style={{ textAlign: "center", padding: "8px 2px", borderRadius: 12, cursor: "pointer",
+                background: isVandaag ? `linear-gradient(135deg,${C.pink}33,${C.purple}33)` : "rgba(255,255,255,0.04)",
+                border: `1px solid ${isVandaag ? C.pink + "66" : "rgba(255,255,255,0.08)"}` }}>
+                <div style={{ fontSize: 9, color: C.muted, fontWeight: 700 }}>{PLAN_DAGEN[d.getDay() === 0 ? 6 : d.getDay() - 1]}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: isVandaag ? C.pink : "#fff" }}>{d.getDate()}</div>
+                {n > 0 && <div style={{ fontSize: 9, color: C.purple, fontWeight: 800 }}>{n}×</div>}
+              </div>
+            );
+          })}
+        </div>
+        {dagen.map(d => {
+          const s = dagStr(d); const lijst = opDag(s); if (!lijst.length) return null;
+          return (
+            <div key={s} style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.label, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+                {PLAN_DAGEN[d.getDay() === 0 ? 6 : d.getDay() - 1]} {d.getDate()} {PLAN_MAANDEN[d.getMonth()]}
+              </div>
+              {lijst.map(a => <AfspraakKaart key={a.id} a={a} />)}
+            </div>
+          );
+        })}
+        {dagen.every(d => !opDag(dagStr(d)).length) && <EmptyState icon="📅" text="Geen afspraken — klik op een dag om toe te voegen" />}
+      </div>
+    );
+  };
+
+  const MaandView = () => {
+    const j = peildatum.getFullYear(), m = peildatum.getMonth();
+    const eersteWd = new Date(j, m, 1).getDay();
+    const offset = eersteWd === 0 ? 6 : eersteWd - 1;
+    const aantalDagen = new Date(j, m + 1, 0).getDate();
+    const cellen = Array.from({ length: offset + aantalDagen }, (_, i) => i < offset ? null : new Date(j, m, i - offset + 1));
+    return (
+      <div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 4 }}>
+          {PLAN_DAGEN.map(d => <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 800, color: C.muted, padding: "4px 0" }}>{d}</div>)}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+          {cellen.map((d, i) => {
+            if (!d) return <div key={`_${i}`} />;
+            const s = dagStr(d); const lijst = opDag(s); const isVandaag = s === TODAY;
+            return (
+              <div key={s} onClick={() => openNieuw(s)} style={{ minHeight: 54, borderRadius: 8, padding: "5px 4px", cursor: "pointer",
+                background: isVandaag ? `linear-gradient(135deg,${C.pink}22,${C.purple}22)` : "rgba(255,255,255,0.04)",
+                border: `1px solid ${isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}` }}>
+                <div style={{ fontSize: 11, fontWeight: isVandaag ? 900 : 600, color: isVandaag ? C.pink : "#fff", marginBottom: 2 }}>{d.getDate()}</div>
+                {lijst.slice(0, 2).map(a => (
+                  <div key={a.id} onClick={e => { e.stopPropagation(); openEdit(a); }} style={{
+                    fontSize: 8, fontWeight: 700, color: "#fff", background: (STATUS_KLEUR[a.status] || C.purple) + "cc",
+                    borderRadius: 3, padding: "1px 3px", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{a.tijdstip} {a.klantNaam || a.behandeling}</div>
+                ))}
+                {lijst.length > 2 && <div style={{ fontSize: 8, color: C.muted }}>+{lijst.length - 2}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Print-only overzicht */}
+      <div id="print-planning" style={{ display: "none" }}>
+        <div style={{ fontFamily: "sans-serif", color: "#000", padding: 20 }}>
+          <h2 style={{ marginBottom: 4 }}>💅 Gewoon bij Isolde — Planning</h2>
+          <p style={{ color: "#666", marginBottom: 16 }}>{periodeLabel}</p>
+          {printAfspraken.length === 0 ? <p>Geen afspraken in deze periode.</p> : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#e9d5ff" }}>
+                  {["Datum","Tijd","Duur","Klant","Behandeling","Prijs","Status","Notities"].map(h => (
+                    <th key={h} style={{ border: "1px solid #bbb", padding: "6px 8px", textAlign: "left" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {printAfspraken.map((a, i) => (
+                  <tr key={a.id} style={{ background: i % 2 === 0 ? "#fff" : "#faf7ff" }}>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{fmtDate(a.datum)}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.tijdstip}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.duurMinuten} min</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.klantNaam || "—"}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.behandeling || "—"}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.prijsIndicatie ? fmt(a.prijsIndicatie) : "—"}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.status}</td>
+                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.notities || ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Planning</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn small variant="secondary" onClick={() => window.print()}>🖨️ Print</Btn>
+          <Btn small onClick={() => openNieuw()}>+ Afspraak</Btn>
+        </div>
+      </div>
+
+      {/* Periode navigatie + weergave toggle */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+        <button onClick={() => navPeriode(-1)} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 13px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>‹</button>
+        <div style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: "#fff" }}>{periodeLabel}</div>
+        <button onClick={() => navPeriode(1)} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 13px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>›</button>
+        <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)" }}>
+          {[["week","Week"],["maand","Maand"]].map(([v, l]) => (
+            <button key={v} onClick={() => setWeergave(v)} style={{ padding: "8px 11px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: "inherit",
+              background: weergave === v ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+              color: weergave === v ? "#fff" : C.muted }}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Vandaag knop */}
+      <div style={{ textAlign: "center", marginBottom: 14 }}>
+        <button onClick={() => setPeildatum(new Date(TODAY))} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 14px", color: C.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Vandaag</button>
+      </div>
+
+      {weergave === "week" ? <WeekView /> : <MaandView />}
+
+      <ConfirmDialog open={!!confirmId} message="Deze afspraak wordt permanent verwijderd."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => { onDelete("afspraken", confirmId); setConfirmId(null); }} />
+
+      <Modal open={modal} onClose={() => { setModal(false); setEditItem(null); }} title={editItem ? "Afspraak bewerken" : "Afspraak toevoegen"}>
+        <Input label="Datum" type="date" value={form.datum} onChange={e => sf("datum", e.target.value)} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}><Input label="Tijd" type="time" value={form.tijdstip} onChange={e => sf("tijdstip", e.target.value)} /></div>
+          <div style={{ flex: 1 }}><Select label="Duur" value={form.duurMinuten} onChange={e => sf("duurMinuten", e.target.value)}
+            options={[30,45,60,75,90,105,120].map(m => ({ value: m, label: `${m} min` }))} /></div>
+        </div>
+        <Select label="Klant" value={form.klantNaam} onChange={e => sf("klantNaam", e.target.value)}
+          options={klanten.map(k => ({ value: `${k.voornaam} ${k.achternaam}`.trim(), label: `${k.voornaam} ${k.achternaam}`.trim() }))}
+          placeholder="— Kies klant —" />
+        <Select label="Behandeling" value={form.behandeling} onChange={e => {
+          sf("behandeling", e.target.value);
+          const p = prijslijst.find(x => x.naam === e.target.value);
+          if (p?.prijs) sf("prijsIndicatie", p.prijs);
+        }} options={prijslijst.filter(p => p.naam).map(p => ({ value: p.naam, label: p.naam + (p.prijs ? ` — ${fmt(p.prijs)}` : "") }))} />
+        <Input label="Prijs indicatie (€)" type="number" step="0.01" value={form.prijsIndicatie} onChange={e => sf("prijsIndicatie", e.target.value)} placeholder="0.00" />
+        <Select label="Status" value={form.status} onChange={e => sf("status", e.target.value)}
+          options={["gepland","bevestigd","voltooid","geannuleerd"].map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))} />
+        <Textarea label="Notities" value={form.notities} onChange={e => sf("notities", e.target.value)} placeholder="Bijv. allergie voor acryl..." />
+        <Btn onClick={submit} fullWidth disabled={!form.datum || !form.tijdstip} style={{ marginTop: 4 }}>Opslaan</Btn>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
 function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup }) {
@@ -1314,6 +1567,7 @@ export default function App() {
   const [leveranciers, setLeveranciers] = useState([]);
   const [prijslijst, setPrijslijst] = useState(TREATMENTS);
   const [kleuren, setKleuren] = useState([]);
+  const [afspraken, setAfspraken] = useState([]);
 
   const dbRef = useRef({});
   const isSavingRef = useRef(false);
@@ -1329,6 +1583,7 @@ export default function App() {
       if (db.leveranciers) setLeveranciers(db.leveranciers);
       if (db.prijslijst) setPrijslijst(db.prijslijst);
       if (db.kleuren) setKleuren(db.kleuren);
+      if (db.afspraken) setAfspraken(db.afspraken);
       setLoading(false);
     })();
 
@@ -1341,6 +1596,7 @@ export default function App() {
       if (nieuweData.leveranciers) setLeveranciers(nieuweData.leveranciers);
       if (nieuweData.prijslijst) setPrijslijst(nieuweData.prijslijst);
       if (nieuweData.kleuren) setKleuren(nieuweData.kleuren);
+      if (nieuweData.afspraken) setAfspraken(nieuweData.afspraken);
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -1452,6 +1708,34 @@ export default function App() {
     setPrijslijst(lijst); await persist({ prijslijst: lijst }); showToast("✓ Prijslijst opgeslagen");
   };
 
+  const addAfspraak = async (item) => {
+    const updated = [...afspraken, item];
+    setAfspraken(updated); await persist({ afspraken: updated }); showToast("✓ Afspraak ingepland");
+  };
+  const editAfspraak = async (item) => {
+    const updated = afspraken.map(a => a.id === item.id ? item : a);
+    setAfspraken(updated); await persist({ afspraken: updated }); showToast("✓ Afspraak bijgewerkt");
+  };
+  const deleteAfspraak = async (_, id) => {
+    const updated = afspraken.filter(a => a.id !== id);
+    setAfspraken(updated); await persist({ afspraken: updated }); showToast("Afspraak verwijderd");
+  };
+  const voltooiAfspraak = async (afspraak) => {
+    // Markeer als voltooid
+    const bijgewerkt = { ...afspraak, status: "voltooid" };
+    const updAfspraken = afspraken.map(a => a.id === afspraak.id ? bijgewerkt : a);
+    setAfspraken(updAfspraken);
+    // Maak direct een inkomen aan
+    const prijs = parseFloat(afspraak.prijsIndicatie) || 0;
+    const inkomen = { id: uid(), datum: afspraak.datum, behandeling: afspraak.behandeling || "Afspraak",
+      klant: afspraak.klantNaam || "", betaalwijze: "", bonPad: "",
+      prijs, btw: +(prijs / 1.21 * 0.21).toFixed(2), exclBtw: +(prijs / 1.21).toFixed(2) };
+    const updInkomsten = [...inkomsten, inkomen];
+    setInkomsten(updInkomsten);
+    await persist({ afspraken: updAfspraken, inkomsten: updInkomsten });
+    showToast("✅ Afspraak voltooid + inkomen aangemaakt");
+  };
+
   const restoreBackup = async (restored) => {
     if (restored.inkomsten) setInkomsten(restored.inkomsten);
     if (restored.uitgaven) setUitgaven(restored.uitgaven);
@@ -1464,6 +1748,7 @@ export default function App() {
     { id: "home",      icon: "🏠", label: "Home" },
     { id: "inkomsten", icon: "💰", label: "Inkomsten" },
     { id: "uitgaven",  icon: "🧾", label: "Uitgaven" },
+    { id: "planning",  icon: "📅", label: "Planning" },
     { id: "relaties",  icon: "👥", label: "Relaties" },
     { id: "kleuren",   icon: "🎨", label: "Kleuren" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
@@ -1497,6 +1782,8 @@ export default function App() {
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
                   onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier} />,
+    planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
+                  onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak} onVoltooien={voltooiAfspraak} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
@@ -1512,6 +1799,11 @@ export default function App() {
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        @media print {
+          body * { visibility: hidden !important; }
+          #print-planning, #print-planning * { visibility: visible !important; }
+          #print-planning { position: fixed; inset: 0; padding: 20px; background: #fff; }
+        }
       `}</style>
 
       {isDesktop ? (
