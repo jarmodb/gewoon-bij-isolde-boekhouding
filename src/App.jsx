@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { loadAll, saveAll, subscribeToChanges } from "./storage.js";
-import { uploadNaarNAS, getBewijsstukUrl } from "./webdav.js";
+import { uploadNaarNAS, getBewijsstukUrl, getNucConfig, setNucConfig } from "./webdav.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TREATMENTS = [
@@ -1316,6 +1316,90 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
   );
 }
 
+// ── NUC Upload Instellingen ───────────────────────────────────────────────────
+function NucInstellingen() {
+  const [config, setConfig] = useState(() => getNucConfig());
+  const [testStatus, setTestStatus] = useState(null); // null | "bezig" | "ok" | "fout"
+  const [bewerken, setBewerken] = useState(false);
+  const [form, setForm] = useState(config);
+
+  const isIngesteld = config.serverUrl && config.apiKey;
+
+  const opslaan = () => {
+    setNucConfig(form);
+    setConfig(form);
+    setBewerken(false);
+    setTestStatus(null);
+  };
+
+  const testVerbinding = async () => {
+    setTestStatus("bezig");
+    try {
+      const res = await fetch(`${config.serverUrl.replace(/\/$/, "")}/health`, {
+        headers: { "x-api-key": config.apiKey },
+        signal: AbortSignal.timeout(5000),
+      });
+      setTestStatus(res.ok ? "ok" : "fout");
+    } catch {
+      setTestStatus("fout");
+    }
+  };
+
+  return (
+    <Card style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.2)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <SectionTitle>Bewijsstukken (NUC)</SectionTitle>
+        <Btn small variant="secondary" onClick={() => { setForm(config); setBewerken(!bewerken); setTestStatus(null); }}>
+          {bewerken ? "Annuleren" : "✏️ Bewerken"}
+        </Btn>
+      </div>
+
+      {!bewerken ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%",
+              background: isIngesteld ? C.green : C.orange,
+              boxShadow: `0 0 6px ${isIngesteld ? C.green : C.orange}` }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: isIngesteld ? C.green : C.orange }}>
+              {isIngesteld ? "Server ingesteld" : "Nog niet ingesteld"}
+            </span>
+          </div>
+          {isIngesteld && (
+            <>
+              <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace", marginBottom: 8, wordBreak: "break-all" }}>
+                {config.serverUrl}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Btn small variant="secondary" onClick={testVerbinding} disabled={testStatus === "bezig"}>
+                  {testStatus === "bezig" ? "⏳ Testen..." : "🔌 Test verbinding"}
+                </Btn>
+                {testStatus === "ok" && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ Verbonden!</span>}
+                {testStatus === "fout" && <span style={{ fontSize: 12, color: C.red, fontWeight: 700 }}>✗ Geen verbinding</span>}
+              </div>
+            </>
+          )}
+          {!isIngesteld && (
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+              Installeer de server op de NUC en vul hier de Tailscale URL en API-key in.
+              Zie <span style={{ color: "#60a5fa" }}>upload-server/README.md</span> voor instructies.
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <Input label="Server URL (Tailscale Funnel adres)"
+            value={form.serverUrl || ""} onChange={e => setForm(f => ({ ...f, serverUrl: e.target.value }))}
+            placeholder="https://jouw-nuc.staartje-xxxxx.ts.net" />
+          <Input label="API-key (wachtwoord uit .env)"
+            value={form.apiKey || ""} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
+            placeholder="nagels2026geheim" />
+          <Btn onClick={opslaan} fullWidth disabled={!form.serverUrl || !form.apiKey}>Opslaan</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1539,21 +1623,8 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         </label>
       </Card>
 
-      {/* Bewijsstukken opslag */}
-      <Card style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)" }}>
-        <SectionTitle>Bewijsstukken opslag</SectionTitle>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
-          <span style={{ fontSize: 13, color: C.green, fontWeight: 700 }}>Supabase Storage actief</span>
-        </div>
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-          Foto's en PDF's worden veilig opgeslagen in de cloud — geen NAS of port forwarding nodig.
-          Bestanden blijven permanent bewaard (7+ jaar voor belastingdienst ✓).
-        </div>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
-          Opslag: bucket <span style={{ color: "#e2d0f8", fontFamily: "monospace" }}>bewijsstukken</span> · max 10MB per bestand · 1GB totaal
-        </div>
-      </Card>
+      {/* NUC bewijsstukken instellingen */}
+      <NucInstellingen />
     </div>
   );
 }
