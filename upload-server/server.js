@@ -23,8 +23,13 @@ const PORT       = process.env.PORT       || 3747;
 const API_KEY    = process.env.API_KEY    || "verander-dit-naar-een-geheim-wachtwoord";
 const UPLOAD_MAP = process.env.UPLOAD_MAP || path.join(__dirname, "uploads");
 
-// Maak uploadmap aan als die nog niet bestaat
-fs.mkdirSync(UPLOAD_MAP, { recursive: true });
+// Uploadmap aanmaken — niet fataal als NAS nog niet gemount is bij opstarten
+try {
+  fs.mkdirSync(UPLOAD_MAP, { recursive: true });
+} catch (e) {
+  console.warn("⚠️  Uploadmap nog niet bereikbaar bij start (NAS waarschijnlijk nog niet gemount).");
+  console.warn("   Map wordt automatisch aangemaakt bij eerste upload.");
+}
 
 // ── Express setup ─────────────────────────────────────────────────────────────
 const app = express();
