@@ -1,19 +1,16 @@
 // ── Bewijsstukken upload naar NUC via Tailscale Funnel ───────────────────────
-// Instellingen worden opgeslagen in localStorage zodat ze niet in de code staan.
+// Config wordt opgeslagen in Supabase (sync naar alle apparaten) én localStorage (offline fallback).
 
-function getConfig() {
-  try {
-    return JSON.parse(localStorage.getItem("nuc_config") || "{}");
-  } catch { return {}; }
+export function getNucConfig() {
+  try { return JSON.parse(localStorage.getItem("nuc_config") || "{}"); } catch { return {}; }
 }
 
-export function getNucConfig() { return getConfig(); }
 export function setNucConfig(config) {
-  localStorage.setItem("nuc_config", JSON.stringify(config));
+  try { localStorage.setItem("nuc_config", JSON.stringify(config)); } catch {}
 }
 
 export async function uploadNaarNAS(bestand, type, datum, bedrag) {
-  const { serverUrl, apiKey } = getConfig();
+  const { serverUrl, apiKey } = getNucConfig();
 
   if (!serverUrl || !apiKey) {
     throw new Error("NUC server nog niet ingesteld — vul de URL en API-key in via Meer → Bewijsstukken.");
@@ -48,10 +45,9 @@ export async function uploadNaarNAS(bestand, type, datum, bedrag) {
 
 export function getBewijsstukUrl(pad) {
   if (!pad) return null;
-  const { serverUrl, apiKey } = getConfig();
+  const { serverUrl, apiKey } = getNucConfig();
   if (!serverUrl || !apiKey) return null;
   return `${serverUrl.replace(/\/$/, "")}/bestand/${pad}?key=${encodeURIComponent(apiKey)}`;
 }
 
-// Legacy export — niet meer nodig maar voorkomt importfouten
 export const WEBDAV_CONFIG = {};

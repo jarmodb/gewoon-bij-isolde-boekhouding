@@ -1317,17 +1317,17 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
 }
 
 // ── NUC Upload Instellingen ───────────────────────────────────────────────────
-function NucInstellingen() {
-  const [config, setConfig] = useState(() => getNucConfig());
-  const [testStatus, setTestStatus] = useState(null); // null | "bezig" | "ok" | "fout"
+function NucInstellingen({ config, onUpdate }) {
+  const [testStatus, setTestStatus] = useState(null);
   const [bewerken, setBewerken] = useState(false);
-  const [form, setForm] = useState(config);
+  const [form, setForm] = useState(config || {});
 
-  const isIngesteld = config.serverUrl && config.apiKey;
+  useEffect(() => setForm(config || {}), [config]);
+
+  const isIngesteld = config?.serverUrl && config?.apiKey;
 
   const opslaan = () => {
-    setNucConfig(form);
-    setConfig(form);
+    onUpdate(form);
     setBewerken(false);
     setTestStatus(null);
   };
@@ -1403,7 +1403,7 @@ function NucInstellingen() {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -1624,7 +1624,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       </Card>
 
       {/* NUC bewijsstukken instellingen */}
-      <NucInstellingen />
+      <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
     </div>
   );
 }
@@ -1645,6 +1645,7 @@ export default function App() {
   const [prijslijst, setPrijslijst] = useState(TREATMENTS);
   const [kleuren, setKleuren] = useState([]);
   const [afspraken, setAfspraken] = useState([]);
+  const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
 
   const dbRef = useRef({});
   const isSavingRef = useRef(false);
@@ -1661,6 +1662,7 @@ export default function App() {
       if (db.prijslijst) setPrijslijst(db.prijslijst);
       if (db.kleuren) setKleuren(db.kleuren);
       if (db.afspraken) setAfspraken(db.afspraken);
+      if (db.nucConfig) { setNucConfigState(db.nucConfig); setNucConfig(db.nucConfig); }
       setLoading(false);
     })();
 
@@ -1674,6 +1676,7 @@ export default function App() {
       if (nieuweData.prijslijst) setPrijslijst(nieuweData.prijslijst);
       if (nieuweData.kleuren) setKleuren(nieuweData.kleuren);
       if (nieuweData.afspraken) setAfspraken(nieuweData.afspraken);
+      if (nieuweData.nucConfig) { setNucConfigState(nieuweData.nucConfig); setNucConfig(nieuweData.nucConfig); }
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -1797,6 +1800,13 @@ export default function App() {
     const updated = afspraken.filter(a => a.id !== id);
     setAfspraken(updated); await persist({ afspraken: updated }); showToast("Afspraak verwijderd");
   };
+  const updateNucConfig = async (config) => {
+    setNucConfigState(config);
+    setNucConfig(config); // ook lokaal opslaan als fallback
+    await persist({ nucConfig: config });
+    showToast("✓ NUC instellingen opgeslagen & gesynchroniseerd");
+  };
+
   const voltooiAfspraak = async (afspraak) => {
     // Markeer als voltooid
     const bijgewerkt = { ...afspraak, status: "voltooid" };
@@ -1865,7 +1875,8 @@ export default function App() {
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
-                  onRestoreBackup={restoreBackup} />,
+                  onRestoreBackup={restoreBackup}
+                  nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig} />,
   };
 
   return (
