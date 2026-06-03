@@ -1436,6 +1436,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
+  const [confirmVerwijder, setConfirmVerwijder] = useState(null); // index van te verwijderen behandeling
   useEffect(() => setLocalPrijzen(prijslijst), [prijslijst]);
 
   const styleHeader = (ws, cols) => {
@@ -1576,7 +1577,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
                   <input type="number" step="0.50" min="0" value={item.prijs}
                     onChange={e => { const u = [...localPrijzen]; u[i] = { ...item, prijs: parseFloat(e.target.value) || 0 }; setLocalPrijzen(u); }}
                     style={{ ...inputStyle, width: 76, flexShrink: 0, padding: "6px 8px", fontSize: 13 }} />
-                  <button onClick={() => setLocalPrijzen(localPrijzen.filter((_, j) => j !== i))}
+                  <button onClick={() => setConfirmVerwijder(i)}
                     style={{ background: "none", border: "none", color: "rgba(248,113,113,0.6)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}>🗑</button>
                 </>
               : <>
@@ -1684,6 +1685,13 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
 
       {/* NUC bewijsstukken instellingen */}
       <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
+
+      <ConfirmDialog
+        open={confirmVerwijder !== null}
+        message={`"${localPrijzen[confirmVerwijder]?.naam}" verwijderen uit de prijslijst?`}
+        onCancel={() => setConfirmVerwijder(null)}
+        onConfirm={() => { setLocalPrijzen(localPrijzen.filter((_, j) => j !== confirmVerwijder)); setConfirmVerwijder(null); }}
+      />
     </div>
   );
 }
@@ -1696,6 +1704,18 @@ export default function App() {
   const [toast, setToast] = useState({ msg: "", type: "success" });
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState("idle");
+
+  // ── Terugknop mobiel: History API ─────────────────────────────────────────
+  const goToTab = (newTab) => {
+    history.pushState({ tab: newTab }, "");
+    setTab(newTab);
+  };
+  useEffect(() => {
+    history.replaceState({ tab: "home" }, "");
+    const onPop = (e) => setTab(e.state?.tab || "home");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const [inkomsten, setInkomsten] = useState([]);
   const [uitgaven, setUitgaven] = useState([]);
@@ -1971,7 +1991,7 @@ export default function App() {
             </div>
             <nav style={{ flex: 1, padding: "16px 12px", overflowY: "auto" }}>
               {TABS.map(t => (
-                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                <button key={t.id} onClick={() => goToTab(t.id)} style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 12,
                   padding: "11px 14px", borderRadius: 12, marginBottom: 4,
                   background: tab === t.id ? "linear-gradient(135deg,rgba(232,121,249,0.15),rgba(168,85,247,0.15))" : "transparent",
@@ -2030,7 +2050,7 @@ export default function App() {
             display: "flex", paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} onClick={() => goToTab(t.id)} style={{
                 flex: 1, background: "none", border: "none", cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                 padding: "10px 0 8px", fontFamily: "inherit",
