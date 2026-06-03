@@ -1567,16 +1567,46 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
           }}>{editPrijzen ? "✓ Opslaan" : "✏️ Bewerken"}</Btn>
         </div>
         {localPrijzen.map((item, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ flex: 1, fontSize: 13, color: "#e2d0f8" }}>{item.naam}</div>
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             {editPrijzen
-              ? <input type="number" step="0.50" value={item.prijs}
-                  onChange={e => { const u = [...localPrijzen]; u[i] = { ...item, prijs: parseFloat(e.target.value) || 0 }; setLocalPrijzen(u); }}
-                  style={{ width: 80, ...inputStyle, padding: "6px 8px", fontSize: 13 }} />
-              : <Badge color={C.green}>{item.prijs ? fmt(item.prijs) : "—"}</Badge>
+              ? <>
+                  <input value={item.naam}
+                    onChange={e => { const u = [...localPrijzen]; u[i] = { ...item, naam: e.target.value }; setLocalPrijzen(u); }}
+                    style={{ flex: 1, ...inputStyle, padding: "6px 10px", fontSize: 13 }} />
+                  <input type="number" step="0.50" min="0" value={item.prijs}
+                    onChange={e => { const u = [...localPrijzen]; u[i] = { ...item, prijs: parseFloat(e.target.value) || 0 }; setLocalPrijzen(u); }}
+                    style={{ width: 76, ...inputStyle, padding: "6px 8px", fontSize: 13 }} />
+                  <button onClick={() => setLocalPrijzen(localPrijzen.filter((_, j) => j !== i))}
+                    style={{ background: "none", border: "none", color: "rgba(248,113,113,0.6)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}>🗑</button>
+                </>
+              : <>
+                  <div style={{ flex: 1, fontSize: 13, color: "#e2d0f8" }}>{item.naam}</div>
+                  <Badge color={C.green}>{item.prijs ? fmt(item.prijs) : "—"}</Badge>
+                </>
             }
           </div>
         ))}
+        {editPrijzen && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, fontWeight: 700 }}>NIEUWE BEHANDELING</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input id="nieuwBehNaam" placeholder="Naam behandeling"
+                style={{ flex: 1, ...inputStyle, padding: "8px 10px", fontSize: 13 }} />
+              <input id="nieuwBehPrijs" type="number" step="0.50" min="0" placeholder="Prijs"
+                style={{ width: 80, ...inputStyle, padding: "8px 8px", fontSize: 13 }} />
+              <button onClick={() => {
+                const naam = document.getElementById("nieuwBehNaam").value.trim();
+                const prijs = parseFloat(document.getElementById("nieuwBehPrijs").value) || 0;
+                if (!naam) return;
+                setLocalPrijzen([...localPrijzen, { naam, prijs }]);
+                document.getElementById("nieuwBehNaam").value = "";
+                document.getElementById("nieuwBehPrijs").value = "";
+              }} style={{ background: `linear-gradient(135deg,${C.pink},${C.purple})`, border: "none",
+                borderRadius: 10, padding: "8px 14px", color: "#fff", cursor: "pointer",
+                fontSize: 13, fontWeight: 700, fontFamily: "inherit", flexShrink: 0 }}>+ Toevoegen</button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Export */}
