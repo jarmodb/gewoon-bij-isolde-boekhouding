@@ -101,7 +101,7 @@ app.get("/bestand/*", (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n💅 Gewoon bij Isolde — Upload server gestart`);
   console.log(`   Poort    : ${PORT}`);
   console.log(`   Map      : ${UPLOAD_MAP}`);
@@ -109,3 +109,12 @@ app.listen(PORT, () => {
   console.log(`\n   Tailscale Funnel starten:`);
   console.log(`   tailscale funnel --bg ${PORT}\n`);
 });
+
+// Graceful shutdown: poort netjes vrijgeven zodat PM2 herstart zonder EADDRINUSE
+const shutdown = () => {
+  console.log("Server wordt afgesloten...");
+  server.close(() => { console.log("Poort vrijgegeven."); process.exit(0); });
+  setTimeout(() => process.exit(0), 3000); // forceer na 3s
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT",  shutdown);
