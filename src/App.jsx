@@ -1078,12 +1078,13 @@ function weekMaandag(d) {
   r.setDate(r.getDate() - (dw === 0 ? 6 : dw - 1)); return r;
 }
 
-function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien }) {
+function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien, onAddKlant }) {
   const [weergave, setWeergave] = useState("week");
   const [peildatum, setPeildatum] = useState(new Date(TODAY));
   const [modal, setModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [nieuweKlant, setNieuweKlant] = useState(null); // naam van onbekende klant na opslaan
   const LEEG = { datum: TODAY, tijdstip: "10:00", duurMinuten: 60, klantNaam: "", behandeling: "", prijsIndicatie: "", notities: "", status: "gepland" };
   const [form, setForm] = useState(LEEG);
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1101,7 +1102,18 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
     const item = { ...form, duurMinuten: parseInt(form.duurMinuten) || 60, prijsIndicatie: parseFloat(form.prijsIndicatie) || 0 };
     if (editItem) onEdit({ ...editItem, ...item });
     else onAdd({ id: uid(), ...item });
+    // Check of klant nieuw is
+    if (form.klantNaam && !klanten.some(k => `${k.voornaam} ${k.achternaam}`.trim().toLowerCase() === form.klantNaam.trim().toLowerCase())) {
+      setNieuweKlant(form.klantNaam.trim());
+    }
     setModal(false); setEditItem(null); setForm(LEEG);
+  };
+
+  const voegNieuweKlantToe = () => {
+    if (!nieuweKlant) return;
+    const delen = nieuweKlant.split(" ");
+    onAddKlant({ id: uid(), voornaam: delen[0] || nieuweKlant, achternaam: delen.slice(1).join(" "), telefoon: "", email: "", vasteBeh: "", notities: "" });
+    setNieuweKlant(null);
   };
 
   const navPeriode = (dir) => {
@@ -1224,46 +1236,51 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
     );
   };
 
+  const printOverzicht = () => {
+    const rijen = printAfspraken.map((a, i) => `
+      <tr style="background:${i % 2 === 0 ? '#fff' : '#faf7ff'}">
+        <td>${fmtDate(a.datum)}</td><td>${a.tijdstip}</td><td>${a.duurMinuten} min</td>
+        <td>${a.klantNaam || '—'}</td><td>${a.behandeling || '—'}</td>
+        <td>${a.prijsIndicatie ? fmt(a.prijsIndicatie) : '—'}</td>
+        <td>${a.status}</td><td>${a.notities || ''}</td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planning ${periodeLabel}</title>
+      <style>body{font-family:sans-serif;padding:20px;color:#000}h2{margin-bottom:4px}
+      p{color:#666;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:12px}
+      th{background:#e9d5ff;border:1px solid #bbb;padding:6px 8px;text-align:left}
+      td{border:1px solid #bbb;padding:5px 8px}</style></head>
+      <body><h2>💅 Gewoon bij Isolde — Planning</h2><p>${periodeLabel}</p>
+      ${printAfspraken.length === 0 ? '<p>Geen afspraken in deze periode.</p>' :
+        `<table><thead><tr>${["Datum","Tijd","Duur","Klant","Behandeling","Prijs","Status","Notities"]
+          .map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rijen}</tbody></table>`}
+      </body></html>`;
+    const win = window.open('', '_blank', 'width=900,height=600');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 250);
+  };
+
   return (
     <div>
-      {/* Print-only overzicht */}
-      <div id="print-planning" style={{ display: "none" }}>
-        <div style={{ fontFamily: "sans-serif", color: "#000", padding: 20 }}>
-          <h2 style={{ marginBottom: 4 }}>💅 Gewoon bij Isolde — Planning</h2>
-          <p style={{ color: "#666", marginBottom: 16 }}>{periodeLabel}</p>
-          {printAfspraken.length === 0 ? <p>Geen afspraken in deze periode.</p> : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#e9d5ff" }}>
-                  {["Datum","Tijd","Duur","Klant","Behandeling","Prijs","Status","Notities"].map(h => (
-                    <th key={h} style={{ border: "1px solid #bbb", padding: "6px 8px", textAlign: "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {printAfspraken.map((a, i) => (
-                  <tr key={a.id} style={{ background: i % 2 === 0 ? "#fff" : "#faf7ff" }}>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{fmtDate(a.datum)}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.tijdstip}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.duurMinuten} min</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.klantNaam || "—"}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.behandeling || "—"}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.prijsIndicatie ? fmt(a.prijsIndicatie) : "—"}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.status}</td>
-                    <td style={{ border: "1px solid #bbb", padding: "5px 8px" }}>{a.notities || ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      {/* Nieuwe klant melding */}
+      {nieuweKlant && (
+        <Card style={{ background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.3)", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: C.orange, marginBottom: 10 }}>
+            👤 <strong>{nieuweKlant}</strong> staat nog niet in je relaties.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn small onClick={voegNieuweKlantToe}>Toevoegen aan relaties</Btn>
+            <Btn small variant="ghost" onClick={() => setNieuweKlant(null)}>Overslaan</Btn>
+          </div>
+        </Card>
+      )}
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Planning</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Btn small variant="secondary" onClick={() => window.print()}>🖨️ Print</Btn>
+          <Btn small variant="secondary" onClick={printOverzicht}>🖨️ Print</Btn>
           <Btn small onClick={() => openNieuw()}>+ Afspraak</Btn>
         </div>
       </div>
@@ -1300,9 +1317,19 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           <div style={{ flex: 1 }}><Select label="Duur" value={form.duurMinuten} onChange={e => sf("duurMinuten", e.target.value)}
             options={[30,45,60,75,90,105,120].map(m => ({ value: m, label: `${m} min` }))} /></div>
         </div>
-        <Select label="Klant" value={form.klantNaam} onChange={e => sf("klantNaam", e.target.value)}
-          options={klanten.map(k => ({ value: `${k.voornaam} ${k.achternaam}`.trim(), label: `${k.voornaam} ${k.achternaam}`.trim() }))}
-          placeholder="— Kies klant —" />
+        <Field label="Klant">
+          <input value={form.klantNaam} onChange={e => sf("klantNaam", e.target.value)}
+            list="klanten-planning" placeholder="Naam klant (bestaand of nieuw)"
+            style={{ ...inputStyle }}
+            onFocus={e => e.target.style.borderColor = C.pink}
+            onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+          <datalist id="klanten-planning">
+            {klanten.map(k => {
+              const naam = `${k.voornaam} ${k.achternaam}`.trim();
+              return <option key={k.id} value={naam} />;
+            })}
+          </datalist>
+        </Field>
         <Select label="Behandeling" value={form.behandeling} onChange={e => {
           sf("behandeling", e.target.value);
           const p = prijslijst.find(x => x.naam === e.target.value);
@@ -1872,7 +1899,8 @@ export default function App() {
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
                   onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier} />,
     planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
-                  onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak} onVoltooien={voltooiAfspraak} />,
+                  onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
+                  onVoltooien={voltooiAfspraak} onAddKlant={addKlant} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
