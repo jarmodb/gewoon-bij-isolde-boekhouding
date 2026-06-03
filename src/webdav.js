@@ -32,9 +32,10 @@ export async function uploadNaarNAS(bestand, type, datum, bedrag, naam, omschrij
   const bestandsnaam = `${delen}.${ext}`;
 
   const formData = new FormData();
-  formData.append("bestand", bestand);
+  // Tekstvelden VOOR het bestand zodat multer ze beschikbaar heeft in de filename callback
   formData.append("pad", `${jaar}/${maand}`);
   formData.append("bestandsnaam", bestandsnaam);
+  formData.append("bestand", bestand);
 
   const res = await fetch(`${serverUrl.replace(/\/$/, "")}/upload`, {
     method: "POST",
