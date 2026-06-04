@@ -264,45 +264,95 @@ function ConfirmDialog({ open, message, onConfirm, onCancel }) {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
-function Dashboard({ inkomsten, uitgaven, kleuren }) {
+const MAAND_KORT = ["Jan","Feb","Mrt","Apr","Mei","Jun","Jul","Aug","Sep","Okt","Nov","Dec"];
+
+function Dashboard({ inkomsten, uitgaven, kleuren, afspraken, onNavigate }) {
   const now = new Date();
-  const thisMonthInc = inkomsten
-    .filter(x => { const d = new Date(x.datum); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
+  const jaar = now.getFullYear();
+  const mnd = now.getMonth();
+
+  const incVoorMaand = (m, j) => inkomsten
+    .filter(x => { const d = new Date(x.datum); return d.getMonth() === m && d.getFullYear() === j; })
     .reduce((s, x) => s + (parseFloat(x.prijs) || 0), 0);
-  const thisMonthExp = uitgaven
-    .filter(x => { const d = new Date(x.datum); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
+  const uitVoorMaand = (m, j) => uitgaven
+    .filter(x => { const d = new Date(x.datum); return d.getMonth() === m && d.getFullYear() === j; })
     .reduce((s, x) => s + (parseFloat(x.bedragIncl) || 0), 0);
-  const winst = thisMonthInc - thisMonthExp;
-  const allInc = inkomsten.reduce((s, x) => s + (parseFloat(x.prijs) || 0), 0);
-  const allExp = uitgaven.reduce((s, x) => s + (parseFloat(x.bedragIncl) || 0), 0);
+
+  const dezeInc = incVoorMaand(mnd, jaar);
+  const dezeUit = uitVoorMaand(mnd, jaar);
+  const vorigeInc = incVoorMaand(mnd === 0 ? 11 : mnd - 1, mnd === 0 ? jaar - 1 : jaar);
+  const winst = dezeInc - dezeUit;
+  const allInc = inkomsten.filter(x => new Date(x.datum).getFullYear() === jaar).reduce((s, x) => s + (parseFloat(x.prijs) || 0), 0);
+  const allExp = uitgaven.filter(x => new Date(x.datum).getFullYear() === jaar).reduce((s, x) => s + (parseFloat(x.bedragIncl) || 0), 0);
+
+  // Maandvergelijking
+  const groei = vorigeInc > 0 ? ((dezeInc - vorigeInc) / vorigeInc * 100) : null;
+
+  // Laatste 6 maanden voor grafiek
+  const grafiekData = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(jaar, mnd - 5 + i, 1);
+    const inc = incVoorMaand(d.getMonth(), d.getFullYear());
+    return { label: MAAND_KORT[d.getMonth()], inc };
+  });
+  const maxInc = Math.max(...grafiekData.map(d => d.inc), 1);
+
+  // Slimme stats
+  const dezeBehandelingen = inkomsten.filter(x => { const d = new Date(x.datum); return d.getMonth() === mnd && d.getFullYear() === jaar; });
+  const gemiddeld = dezeBehandelingen.length > 0 ? dezeInc / dezeBehandelingen.length : 0;
+  const zestigDagenGeleden = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0,10);
+  const actieveKlanten = new Set(inkomsten.filter(x => x.datum >= zestigDagenGeleden && x.klant).map(x => x.klant)).size;
+  const besteMaxInc = Math.max(...Array.from({length:12},(_,i) => incVoorMaand(i, jaar)));
+  const besteMaand = Array.from({length:12},(_,i) => ({ naam: MAAND_KORT[i], inc: incVoorMaand(i,jaar) })).find(m => m.inc === besteMaxInc);
+
+  // Vandaag afspraken
+  const vandaagAfspraken = (afspraken || []).filter(a => a.datum === TODAY && a.status !== "geannuleerd")
+    .sort((a,b) => a.tijdstip.localeCompare(b.tijdstip));
 
   const behandelingCount = {};
   inkomsten.forEach(x => { if (x.behandeling) behandelingCount[x.behandeling] = (behandelingCount[x.behandeling] || 0) + 1; });
   const topBeh = Object.entries(behandelingCount).sort((a, b) => b[1] - a[1]).slice(0, 3);
-
   const maandNaam = now.toLocaleDateString("nl-NL", { month: "long" });
   const nognietBeoordeeld = kleuren.filter(k => !k.beoordeling).length;
 
   return (
     <div>
-      <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", marginBottom: 2 }}>Hoi! 💅</div>
-      <div style={{ color: C.muted, fontSize: 13, marginBottom: 22 }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", marginBottom: 2 }}>Hoi Isolde! 💅</div>
+      <div style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>
         {now.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
       </div>
 
-      {/* Maand stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        {[
-          { label: "Inkomsten", value: thisMonthInc, color: C.green, icon: "↑" },
-          { label: "Uitgaven", value: thisMonthExp, color: C.red, icon: "↓" },
-        ].map(({ label, value, color, icon }) => (
-          <div key={label} style={{ background: `${color}18`, border: `1px solid ${color}30`,
-            borderRadius: 18, padding: "16px 14px" }}>
-            <div style={{ fontSize: 11, color, fontWeight: 700, marginBottom: 4 }}>{icon} {label}</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>{fmt(value)}</div>
-            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{maandNaam}</div>
+      {/* Vandaag afspraken */}
+      {vandaagAfspraken.length > 0 && (
+        <Card style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", marginBottom: 12 }}
+          onClick={() => onNavigate?.("planning")}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#818cf8", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+            📅 Vandaag — {vandaagAfspraken.length} afspraak{vandaagAfspraken.length !== 1 ? "en" : ""}
           </div>
-        ))}
+          {vandaagAfspraken.slice(0, 3).map(a => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+              <span style={{ fontSize: 13, color: "#e2d0f8" }}>{a.tijdstip} · {a.klantNaam || a.behandeling}</span>
+              {a.behandeling && a.klantNaam && <span style={{ fontSize: 11, color: C.muted }}>{a.behandeling}</span>}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* Maand stats + vergelijking */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div style={{ background: `${C.green}18`, border: `1px solid ${C.green}30`, borderRadius: 18, padding: "16px 14px" }}>
+          <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 4 }}>↑ Inkomsten</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>{fmt(dezeInc)}</div>
+          {groei !== null && (
+            <div style={{ fontSize: 10, color: groei >= 0 ? C.green : C.red, marginTop: 4, fontWeight: 700 }}>
+              {groei >= 0 ? "▲" : "▼"} {Math.abs(groei).toFixed(0)}% vs vorige maand
+            </div>
+          )}
+        </div>
+        <div style={{ background: `${C.red}18`, border: `1px solid ${C.red}30`, borderRadius: 18, padding: "16px 14px" }}>
+          <div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 4 }}>↓ Uitgaven</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>{fmt(dezeUit)}</div>
+          <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{maandNaam}</div>
+        </div>
       </div>
 
       {/* Winst */}
@@ -316,18 +366,44 @@ function Dashboard({ inkomsten, uitgaven, kleuren }) {
         <div style={{ fontSize: 34, fontWeight: 900, color: "#fff" }}>{fmt(winst)}</div>
       </Card>
 
-      {/* Jaar totaal */}
+      {/* 6-maanden grafiek */}
       <Card>
-        <SectionTitle>Jaaroverzicht {now.getFullYear()}</SectionTitle>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <SectionTitle>Inkomsten — laatste 6 maanden</SectionTitle>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 80 }}>
+          {grafiekData.map(({ label, inc }, i) => {
+            const hoogte = maxInc > 0 ? Math.max(4, Math.round(inc / maxInc * 72)) : 4;
+            const isHuidig = i === 5;
+            return (
+              <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ fontSize: 9, color: isHuidig ? C.green : C.muted, fontWeight: isHuidig ? 800 : 400 }}>
+                  {inc > 0 ? (inc >= 1000 ? `${(inc/1000).toFixed(1)}k` : fmt(inc).replace("€","").trim()) : ""}
+                </div>
+                <div style={{ width: "100%", height: hoogte, borderRadius: "4px 4px 0 0",
+                  background: isHuidig ? `linear-gradient(180deg,${C.green},#16a34a)` : "rgba(168,85,247,0.4)",
+                  minHeight: 4 }} />
+                <div style={{ fontSize: 9, color: isHuidig ? "#fff" : C.muted, fontWeight: isHuidig ? 800 : 400 }}>{label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Slimme stats */}
+      <Card>
+        <SectionTitle>Inzichten {jaar}</SectionTitle>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {[
-            { label: "Inkomsten", value: allInc, color: C.green },
-            { label: "Uitgaven", value: allExp, color: C.red },
-            { label: "Winst", value: allInc - allExp, color: C.purple },
-          ].map(({ label, value, color }) => (
-            <div key={label} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{label}</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color }}>{fmt(value)}</div>
+            { label: "Jaaromzet", value: fmt(allInc), color: C.green },
+            { label: "Jaarwinst", value: fmt(allInc - allExp), color: C.purple },
+            { label: "Gem. per behandeling", value: gemiddeld > 0 ? fmt(gemiddeld) : "—", color: "#e2d0f8" },
+            { label: "Actieve klanten", value: `${actieveKlanten} klant${actieveKlanten !== 1 ? "en" : ""}`, color: "#60a5fa", sub: "laatste 60 dagen" },
+            ...(besteMaand && besteMaand.inc > 0 ? [{ label: "Beste maand", value: besteMaand.naam, color: C.orange, sub: fmt(besteMaand.inc) }] : []),
+            { label: "Behandelingen", value: `${dezeBehandelingen.length}×`, color: C.pink, sub: `deze ${maandNaam}` },
+          ].map(({ label, value, color, sub }) => (
+            <div key={label}>
+              <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color }}>{value}</div>
+              {sub && <div style={{ fontSize: 10, color: C.muted }}>{sub}</div>}
             </div>
           ))}
         </div>
@@ -343,7 +419,13 @@ function Dashboard({ inkomsten, uitgaven, kleuren }) {
                 background: ["#e879f920","#a855f720","#7c3aed20"][i],
                 color: ["#e879f9","#a855f7","#c4b5fd"][i],
                 display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
-              <div style={{ flex: 1, fontSize: 14, color: "#e2d0f8" }}>{naam}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: "#e2d0f8" }}>{naam}</div>
+                <div style={{ height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, marginTop: 4 }}>
+                  <div style={{ height: "100%", width: `${Math.round(count / (topBeh[0]?.[1]||1) * 100)}%`,
+                    background: ["#e879f9","#a855f7","#c4b5fd"][i], borderRadius: 2 }} />
+                </div>
+              </div>
               <Badge color={C.purple}>{count}×</Badge>
             </div>
           ))}
@@ -2957,7 +3039,7 @@ export default function App() {
   );
 
   const pageProps = {
-    home:      <Dashboard inkomsten={inkomsten} uitgaven={uitgaven} kleuren={kleuren} />,
+    home:      <Dashboard inkomsten={inkomsten} uitgaven={uitgaven} kleuren={kleuren} afspraken={afspraken} onNavigate={goToTab} />,
     inkomsten: <Inkomsten data={inkomsten} prijslijst={prijslijst} klanten={klanten} onAdd={addInkomst} onDelete={deleteItem} onEdit={editInkomst} onMaakFactuur={maakFactuur} />,
     uitgaven:  <Uitgaven data={uitgaven} leveranciers={leveranciers} onAdd={addUitgave} onDelete={deleteItem} onEdit={editUitgave} />,
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
