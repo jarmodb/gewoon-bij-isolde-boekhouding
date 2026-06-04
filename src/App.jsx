@@ -1720,10 +1720,18 @@ function SalonInstellingen({ inst, onUpdate }) {
   useEffect(() => setForm(inst || {}), [inst]);
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handleLogo = (e) => {
+    const bestand = e.target.files?.[0];
+    if (!bestand) return;
+    const reader = new FileReader();
+    reader.onload = ev => sf("logoBase64", ev.target.result);
+    reader.readAsDataURL(bestand);
+  };
+
   return (
     <Card style={{ background: "rgba(232,121,249,0.06)", border: "1px solid rgba(232,121,249,0.2)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: bewerken ? 12 : 0 }}>
-        <SectionTitle>Salon instellingen (facturen)</SectionTitle>
+        <SectionTitle>Salon instellingen (facturen & kaartje)</SectionTitle>
         <Btn small variant="secondary" onClick={() => {
           if (bewerken) onUpdate({ ...inst, ...form });
           setBewerken(!bewerken);
@@ -1731,30 +1739,50 @@ function SalonInstellingen({ inst, onUpdate }) {
       </div>
       {bewerken ? (
         <>
+          {/* Logo upload */}
+          <Field label="Logo">
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {form.logoBase64 && <img src={form.logoBase64} alt="logo" style={{ height: 48, borderRadius: 8, background: "#fff", padding: 4 }} />}
+              <label style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: "1.5px dashed rgba(255,255,255,0.2)",
+                borderRadius: 12, padding: "10px", color: C.muted, cursor: "pointer",
+                fontSize: 13, textAlign: "center", display: "block" }}>
+                {form.logoBase64 ? "📎 Ander logo kiezen" : "📎 Logo uploaden (PNG/JPG)"}
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleLogo} />
+              </label>
+              {form.logoBase64 && <button onClick={() => sf("logoBase64", null)}
+                style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16 }}>✕</button>}
+            </div>
+          </Field>
           <Input label="Salonnaam" value={form.naam || ""} onChange={e => sf("naam", e.target.value)} />
+          <Input label="Tagline" value={form.tagline || ""} onChange={e => sf("tagline", e.target.value)} placeholder="Nails & More" />
           <Input label="Adres" value={form.adres || ""} onChange={e => sf("adres", e.target.value)} placeholder="Straat en huisnummer" />
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}><Input label="Postcode" value={form.postcode || ""} onChange={e => sf("postcode", e.target.value)} /></div>
             <div style={{ flex: 2 }}><Input label="Stad" value={form.stad || ""} onChange={e => sf("stad", e.target.value)} /></div>
           </div>
+          <Input label="Telefoon" type="tel" value={form.telefoon || ""} onChange={e => sf("telefoon", e.target.value)} />
+          <Input label="E-mail" type="email" value={form.email || ""} onChange={e => sf("email", e.target.value)} />
+          <Input label="Website" value={form.website || ""} onChange={e => sf("website", e.target.value)} placeholder="www.gewoonbijIsolde.nl" />
+          <Input label="Instagram" value={form.instagram || ""} onChange={e => sf("instagram", e.target.value)} placeholder="@gewoonbijIsolde" />
           <Input label="KVK-nummer" value={form.kvk || ""} onChange={e => sf("kvk", e.target.value)} placeholder="12345678" />
           <Input label="BTW-nummer" value={form.btwNummer || ""} onChange={e => sf("btwNummer", e.target.value)} placeholder="NL123456789B01" />
           <Input label="IBAN" value={form.iban || ""} onChange={e => sf("iban", e.target.value)} placeholder="NL00 BANK 0000 0000 00" />
           <Input label="Betalingstermijn (dagen)" type="number" value={form.betalingstermijn || "14"} onChange={e => sf("betalingstermijn", e.target.value)} />
         </>
       ) : (
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
-          {[
-            ["Naam", inst?.naam],
-            ["Adres", inst?.adres ? `${inst.adres}, ${inst.postcode} ${inst.stad}` : null],
-            ["KVK", inst?.kvk],
-            ["BTW-nr", inst?.btwNummer],
-            ["IBAN", inst?.iban],
-            ["Betaaltermijn", inst?.betalingstermijn ? `${inst.betalingstermijn} dagen` : null],
-          ].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k}><span style={{ color: C.label }}>{k}: </span>{v}</div>
-          ))}
-          {!inst?.iban && <div style={{ color: C.orange }}>⚠️ Vul je gegevens in voor facturen</div>}
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          {inst?.logoBase64 && <img src={inst.logoBase64} alt="logo" style={{ height: 44, borderRadius: 8, background: "#fff", padding: 4, flexShrink: 0 }} />}
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
+            {[
+              ["Naam", inst?.naam],
+              ["Adres", inst?.adres ? `${inst.adres}, ${inst.postcode} ${inst.stad}` : null],
+              ["KVK", inst?.kvk],
+              ["IBAN", inst?.iban],
+            ].filter(([, v]) => v).map(([k, v]) => (
+              <div key={k}><span style={{ color: C.label }}>{k}: </span>{v}</div>
+            ))}
+            {!inst?.iban && <div style={{ color: C.orange }}>⚠️ Vul je gegevens in voor facturen</div>}
+          </div>
         </div>
       )}
     </Card>
@@ -1848,7 +1876,7 @@ function NucInstellingen({ config, onUpdate }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2099,8 +2127,11 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         </label>
       </Card>
 
-      {/* Salon instellingen */}
+      {/* Salon instellingen + visitekaartje */}
       <SalonInstellingen inst={salonInst} onUpdate={onUpdateSalonInst} />
+      <Btn fullWidth variant="secondary" onClick={onMaakVisitekaartje} style={{ marginBottom: 12 }}>
+        📇 Digitaal visitekaartje openen
+      </Btn>
 
       {/* NUC bewijsstukken instellingen */}
       <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
@@ -2326,89 +2357,127 @@ export default function App() {
     return label;
   };
 
+  const openPrintVenster = (html, breedte = 820) => {
+    const win = window.open("", "_blank", `width=${breedte},height=1000`);
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => win.print(), 500);
+  };
+
+  const brandCss = `
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap');
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Montserrat',sans-serif; background:#fff; color:#2a1f1f; }
+    .serif { font-family:'Cormorant Garamond',serif; }
+    .rose { color:#c4938a; }
+    .muted { color:#888; }
+  `;
+
   const maakFactuur = async (item) => {
     const nr = await genereerFactuurNr();
     const s = salonInst;
-    const vervalDatum = new Date(item.datum);
-    vervalDatum.setDate(vervalDatum.getDate() + parseInt(s.betalingstermijn || 14));
+    const verval = new Date(item.datum);
+    verval.setDate(verval.getDate() + parseInt(s.betalingstermijn || 14));
+    const logoHtml = s.logoBase64
+      ? `<img src="${s.logoBase64}" style="max-height:80px;max-width:240px;object-fit:contain;" />`
+      : `<div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:2px;color:#2a1f1f">${s.naam || "Gewoon bij Isolde"}</div>`;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factuur ${nr}</title>
-    <style>
-      body { font-family: 'Arial', sans-serif; margin: 0; padding: 40px; color: #1a1a2e; background: #fff; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 3px solid #a855f7; padding-bottom: 20px; }
-      .salon-naam { font-size: 24px; font-weight: 900; color: #a855f7; }
-      .salon-info { font-size: 12px; color: #666; line-height: 1.8; margin-top: 4px; }
-      .factuur-info { text-align: right; }
-      .factuur-nr { font-size: 28px; font-weight: 900; color: #1a1a2e; }
-      .factuur-meta { font-size: 12px; color: #666; line-height: 1.8; margin-top: 4px; }
-      .klant-blok { background: #f8f4ff; border-radius: 8px; padding: 16px 20px; margin-bottom: 30px; }
-      .klant-blok h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #a855f7; }
-      .klant-naam { font-size: 16px; font-weight: 700; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-      th { background: #a855f7; color: #fff; padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-      td { padding: 12px 14px; border-bottom: 1px solid #eee; font-size: 13px; }
-      tr:last-child td { border-bottom: none; }
-      .totalen { margin-left: auto; width: 280px; }
-      .totaal-rij { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
-      .totaal-rij.eindtotaal { font-size: 16px; font-weight: 900; border-top: 2px solid #a855f7; padding-top: 10px; margin-top: 4px; color: #a855f7; }
-      .betaling { margin-top: 40px; background: #f8f4ff; border-radius: 8px; padding: 16px 20px; font-size: 12px; }
-      .betaling h3 { margin: 0 0 8px; color: #a855f7; font-size: 13px; }
-      .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 16px; }
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factuur ${nr}</title><style>
+    ${brandCss}
+    body { padding:48px; max-width:800px; margin:0 auto; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid #e8d5d0; }
+    .salon-info { font-size:11px; color:#888; line-height:2; margin-top:10px; }
+    .factuur-label { font-family:'Cormorant Garamond',serif; font-size:38px; font-weight:300; letter-spacing:4px; color:#2a1f1f; text-align:right; }
+    .factuur-meta { font-size:11px; color:#888; line-height:2; text-align:right; margin-top:8px; }
+    .factuur-meta strong { color:#2a1f1f; }
+    .roze-balk { height:2px; background:linear-gradient(90deg,#e8d5d0,#c4938a,#e8d5d0); margin:0 0 28px; }
+    .klant-blok { background:#fdf8f7; border-left:3px solid #c4938a; padding:14px 18px; margin-bottom:28px; }
+    .klant-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:#c4938a; margin-bottom:4px; }
+    .klant-naam { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:400; }
+    table { width:100%; border-collapse:collapse; margin-bottom:24px; }
+    thead tr { border-bottom:2px solid #e8d5d0; }
+    th { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:#c4938a; padding:10px 12px; text-align:left; font-weight:500; }
+    td { padding:14px 12px; border-bottom:1px solid #f5eeec; font-size:13px; }
+    .totalen { margin-left:auto; width:260px; }
+    .totaal-rij { display:flex; justify-content:space-between; padding:5px 0; font-size:12px; color:#888; }
+    .totaal-rij.main { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:600; color:#2a1f1f; border-top:1px solid #e8d5d0; padding-top:12px; margin-top:6px; }
+    .betaling { margin-top:36px; padding:18px 20px; background:#fdf8f7; border:1px solid #e8d5d0; border-radius:4px; font-size:12px; line-height:2; }
+    .betaling-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:#c4938a; margin-bottom:8px; }
+    .footer { margin-top:36px; text-align:center; font-family:'Cormorant Garamond',serif; font-size:14px; font-style:italic; color:#c4938a; border-top:1px solid #e8d5d0; padding-top:20px; }
+    @media print { body { padding:30px; } }
     </style></head><body>
     <div class="header">
-      <div>
-        <div class="salon-naam">💅 ${s.naam || "Gewoon bij Isolde"}</div>
-        <div class="salon-info">
-          ${s.adres ? `${s.adres}<br>` : ""}${s.postcode && s.stad ? `${s.postcode} ${s.stad}<br>` : ""}
-          ${s.kvk ? `KVK: ${s.kvk}<br>` : ""}${s.btwNummer ? `BTW: ${s.btwNummer}` : ""}
-        </div>
-      </div>
-      <div class="factuur-info">
-        <div class="factuur-nr">FACTUUR</div>
-        <div class="factuur-meta">
-          Nummer: <strong>${nr}</strong><br>
-          Datum: <strong>${fmtDate(item.datum)}</strong><br>
-          Vervaldatum: <strong>${fmtDate(vervalDatum.toISOString().slice(0,10))}</strong>
-        </div>
-      </div>
+      <div>${logoHtml}<div class="salon-info">${[s.adres,`${s.postcode||""} ${s.stad||""}`.trim(),s.kvk?`KVK ${s.kvk}`:"",s.btwNummer?`BTW ${s.btwNummer}`:"",s.email,s.telefoon].filter(Boolean).join("<br>")}</div></div>
+      <div><div class="factuur-label">FACTUUR</div><div class="factuur-meta">Nr. <strong>${nr}</strong><br>Datum <strong>${fmtDate(item.datum)}</strong><br>Vervaldatum <strong>${fmtDate(verval.toISOString().slice(0,10))}</strong></div></div>
     </div>
-
-    ${item.klant ? `<div class="klant-blok"><h3>Factuur aan</h3><div class="klant-naam">${item.klant}</div></div>` : ""}
-
+    <div class="roze-balk"></div>
+    ${item.klant ? `<div class="klant-blok"><div class="klant-label">Factuur aan</div><div class="klant-naam">${item.klant}</div></div>` : ""}
     <table>
-      <thead><tr><th>Omschrijving</th><th style="text-align:right">Prijs excl. BTW</th><th style="text-align:right">BTW 21%</th><th style="text-align:right">Totaal incl. BTW</th></tr></thead>
-      <tbody>
-        <tr>
-          <td>${item.behandeling}</td>
-          <td style="text-align:right">${fmt(item.exclBtw || 0)}</td>
-          <td style="text-align:right">${fmt(item.btw || 0)}</td>
-          <td style="text-align:right"><strong>${fmt(item.prijs || 0)}</strong></td>
-        </tr>
-      </tbody>
+      <thead><tr><th>Omschrijving</th><th style="text-align:right">Excl. BTW</th><th style="text-align:right">BTW 21%</th><th style="text-align:right">Incl. BTW</th></tr></thead>
+      <tbody><tr>
+        <td style="font-size:14px">${item.behandeling}</td>
+        <td style="text-align:right">${fmt(item.exclBtw||0)}</td>
+        <td style="text-align:right">${fmt(item.btw||0)}</td>
+        <td style="text-align:right;font-weight:500">${fmt(item.prijs||0)}</td>
+      </tr></tbody>
     </table>
-
     <div class="totalen">
-      <div class="totaal-rij"><span>Subtotaal excl. BTW</span><span>${fmt(item.exclBtw || 0)}</span></div>
-      <div class="totaal-rij"><span>BTW 21%</span><span>${fmt(item.btw || 0)}</span></div>
-      <div class="totaal-rij eindtotaal"><span>Totaal te betalen</span><span>${fmt(item.prijs || 0)}</span></div>
+      <div class="totaal-rij"><span>Subtotaal excl. BTW</span><span>${fmt(item.exclBtw||0)}</span></div>
+      <div class="totaal-rij"><span>BTW 21%</span><span>${fmt(item.btw||0)}</span></div>
+      <div class="totaal-rij main"><span>Totaal</span><span>${fmt(item.prijs||0)}</span></div>
     </div>
-
     <div class="betaling">
-      <h3>Betalingsinformatie</h3>
-      ${s.iban ? `Maak over op <strong>${s.iban}</strong> t.n.v. <strong>${s.naam || "Gewoon bij Isolde"}</strong><br>` : ""}
-      Onder vermelding van factuurnummer <strong>${nr}</strong><br>
-      Betalingstermijn: ${s.betalingstermijn || 14} dagen (voor ${fmtDate(vervalDatum.toISOString().slice(0,10))})
-      ${item.betaalwijze && item.betaalwijze !== "Overschrijving" ? `<br><em>Reeds betaald via ${item.betaalwijze}</em>` : ""}
+      <div class="betaling-label">Betalingsinformatie</div>
+      ${s.iban ? `IBAN <strong>${s.iban}</strong> t.n.v. <strong>${s.naam||"Gewoon bij Isolde"}</strong><br>` : ""}
+      o.v.v. factuurnummer <strong>${nr}</strong> — betaling voor <strong>${fmtDate(verval.toISOString().slice(0,10))}</strong>
+      ${item.betaalwijze && item.betaalwijze !== "Overschrijving" ? `<br><em style="color:#888">Reeds voldaan via ${item.betaalwijze}</em>` : ""}
     </div>
-
-    <div class="footer">Bedankt voor uw vertrouwen! 💅 ${s.naam || "Gewoon bij Isolde"}</div>
+    <div class="footer">Bedankt voor uw vertrouwen — ${s.naam||"Gewoon bij Isolde"} ${s.tagline ? `· ${s.tagline}` : ""}</div>
     </body></html>`;
+    openPrintVenster(html);
+  };
 
-    const win = window.open("", "_blank", "width=800,height=900");
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 400);
+  const maakVisitekaartje = () => {
+    const s = salonInst;
+    const logoHtml = s.logoBase64
+      ? `<img src="${s.logoBase64}" style="max-height:100px;max-width:280px;object-fit:contain;" />`
+      : `<div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;letter-spacing:3px;color:#2a1f1f">${s.naam||"Gewoon bij Isolde"}</div>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Visitekaartje</title><style>
+    ${brandCss}
+    body { background:#f5f0ee; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .kaart { background:#fff; width:360px; border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.12); }
+    .kaart-top { background:linear-gradient(135deg,#fdf8f7,#f5eeec); padding:36px 32px 28px; text-align:center; border-bottom:1px solid #e8d5d0; }
+    .tagline { font-family:'Cormorant Garamond',serif; font-size:14px; font-style:italic; color:#c4938a; margin-top:8px; letter-spacing:1px; }
+    .kaart-body { padding:24px 32px; }
+    .info-rij { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid #f5eeec; font-size:13px; color:#555; }
+    .info-rij:last-child { border-bottom:none; }
+    .info-icon { color:#c4938a; font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+    .kaart-bottom { background:linear-gradient(135deg,#2a1f1f,#3d2c2c); padding:16px 32px; text-align:center; }
+    .kaart-bottom-tekst { font-family:'Cormorant Garamond',serif; font-size:12px; color:#c4938a; letter-spacing:2px; text-transform:uppercase; }
+    .deel-btn { display:block; margin:20px auto 0; padding:10px 28px; background:linear-gradient(135deg,#c4938a,#a87a72); color:#fff; border:none; border-radius:20px; font-size:13px; cursor:pointer; font-family:'Montserrat',sans-serif; letter-spacing:0.5px; }
+    @media print { body { background:#fff; } .deel-btn { display:none; } }
+    </style></head><body>
+    <div>
+      <div class="kaart">
+        <div class="kaart-top">
+          ${logoHtml}
+          ${s.tagline ? `<div class="tagline">${s.tagline}</div>` : ""}
+        </div>
+        <div class="kaart-body">
+          ${s.adres ? `<div class="info-rij"><span class="info-icon">📍</span><span>${s.adres}, ${s.postcode||""} ${s.stad||""}</span></div>` : ""}
+          ${s.telefoon ? `<div class="info-rij"><span class="info-icon">📞</span><span>${s.telefoon}</span></div>` : ""}
+          ${s.email ? `<div class="info-rij"><span class="info-icon">✉️</span><span>${s.email}</span></div>` : ""}
+          ${s.website ? `<div class="info-rij"><span class="info-icon">🌐</span><span>${s.website}</span></div>` : ""}
+          ${s.instagram ? `<div class="info-rij"><span class="info-icon">📸</span><span>${s.instagram}</span></div>` : ""}
+        </div>
+        <div class="kaart-bottom">
+          <div class="kaart-bottom-tekst">Nails & More</div>
+        </div>
+      </div>
+      <button class="deel-btn" onclick="window.print()">🖨️ Afdrukken / Opslaan als PDF</button>
+    </div>
+    </body></html>`;
+    openPrintVenster(html, 440);
   };
 
   const updateNucConfig = async (config) => {
@@ -2492,7 +2561,8 @@ export default function App() {
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
                   onRestoreBackup={restoreBackup}
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
-                  salonInst={salonInst} onUpdateSalonInst={updateSalonInst} />,
+                  salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
+                  onMaakVisitekaartje={maakVisitekaartje} />,
   };
 
   return (
