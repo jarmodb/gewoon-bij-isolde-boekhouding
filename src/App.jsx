@@ -2541,13 +2541,14 @@ export default function App() {
 
   const genereerFactuurNr = async () => {
     const jaar = new Date().getFullYear();
-    // Gebruik dbRef zodat we altijd de meest actuele lijst hebben
     const bestaande = dbRef.current.facturen || [];
-    const hoogste = bestaande
-      .filter(f => f.nr?.startsWith(`F${jaar}-`))
-      .map(f => parseInt(f.nr.split("-")[1]) || 0)
-      .reduce((max, n) => Math.max(max, n), 0);
-    const volgend = Math.max(salonInst.volgendFactuurnr || 1, hoogste + 1);
+    // Als lijst leeg is: altijd opnieuw beginnen bij 1
+    const hoogste = bestaande.length === 0 ? 0 :
+      bestaande
+        .filter(f => f.nr?.startsWith(`F${jaar}-`))
+        .map(f => parseInt(f.nr.split("-")[1]) || 0)
+        .reduce((max, n) => Math.max(max, n), 0);
+    const volgend = hoogste + 1;
     const label = `F${jaar}-${String(volgend).padStart(3, "0")}`;
     const bijgewerkt = { ...salonInst, volgendFactuurnr: volgend + 1 };
     setSalonInst(bijgewerkt);
@@ -2592,7 +2593,7 @@ export default function App() {
 
     // NAS upload in aparte facturen/ map
     try {
-      const { serverUrl, apiKey } = getNucConfig();
+      const { serverUrl, apiKey } = nucConfig || getNucConfig();
       if (serverUrl && apiKey) {
         const jaar = item.datum.slice(0, 4);
         const maand = item.datum.slice(5, 7);

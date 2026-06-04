@@ -72,7 +72,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // max 10MB
   fileFilter: (req, file, cb) => {
-    const toegestaan = ["image/jpeg","image/jpg","image/png","image/webp","image/heic","application/pdf"];
+    const toegestaan = ["image/jpeg","image/jpg","image/png","image/webp","image/heic","application/pdf","text/html","application/octet-stream"];
     cb(null, toegestaan.includes(file.mimetype));
   },
 });
