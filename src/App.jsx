@@ -417,7 +417,7 @@ function BonUpload({ onUploaded, datum, bedrag, type, uploading, setUploading, n
   );
 }
 
-function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
+function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakFactuur }) {
   const [modal, setModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
@@ -514,6 +514,8 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit }) {
                 <div style={{ fontSize: 20, fontWeight: 900, color: C.green }}>{fmt(item.prijs)}</div>
                 <div style={{ fontSize: 10, color: C.muted }}>BTW {fmt(item.btw)}</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 4, justifyContent: "flex-end" }}>
+                  <button onClick={() => onMaakFactuur(item)} title="Factuur maken"
+                    style={{ background: "none", border: "none", color: "rgba(99,168,233,0.7)", cursor: "pointer", fontSize: 15 }}>🧾</button>
                   <button onClick={() => openEdit(item)}
                     style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
                   <button onClick={() => setConfirmId(item.id)}
@@ -1711,6 +1713,54 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
   );
 }
 
+// ── Salon Instellingen (voor facturen) ───────────────────────────────────────
+function SalonInstellingen({ inst, onUpdate }) {
+  const [bewerken, setBewerken] = useState(false);
+  const [form, setForm] = useState(inst || {});
+  useEffect(() => setForm(inst || {}), [inst]);
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <Card style={{ background: "rgba(232,121,249,0.06)", border: "1px solid rgba(232,121,249,0.2)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: bewerken ? 12 : 0 }}>
+        <SectionTitle>Salon instellingen (facturen)</SectionTitle>
+        <Btn small variant="secondary" onClick={() => {
+          if (bewerken) onUpdate({ ...inst, ...form });
+          setBewerken(!bewerken);
+        }}>{bewerken ? "✓ Opslaan" : "✏️ Bewerken"}</Btn>
+      </div>
+      {bewerken ? (
+        <>
+          <Input label="Salonnaam" value={form.naam || ""} onChange={e => sf("naam", e.target.value)} />
+          <Input label="Adres" value={form.adres || ""} onChange={e => sf("adres", e.target.value)} placeholder="Straat en huisnummer" />
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}><Input label="Postcode" value={form.postcode || ""} onChange={e => sf("postcode", e.target.value)} /></div>
+            <div style={{ flex: 2 }}><Input label="Stad" value={form.stad || ""} onChange={e => sf("stad", e.target.value)} /></div>
+          </div>
+          <Input label="KVK-nummer" value={form.kvk || ""} onChange={e => sf("kvk", e.target.value)} placeholder="12345678" />
+          <Input label="BTW-nummer" value={form.btwNummer || ""} onChange={e => sf("btwNummer", e.target.value)} placeholder="NL123456789B01" />
+          <Input label="IBAN" value={form.iban || ""} onChange={e => sf("iban", e.target.value)} placeholder="NL00 BANK 0000 0000 00" />
+          <Input label="Betalingstermijn (dagen)" type="number" value={form.betalingstermijn || "14"} onChange={e => sf("betalingstermijn", e.target.value)} />
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
+          {[
+            ["Naam", inst?.naam],
+            ["Adres", inst?.adres ? `${inst.adres}, ${inst.postcode} ${inst.stad}` : null],
+            ["KVK", inst?.kvk],
+            ["BTW-nr", inst?.btwNummer],
+            ["IBAN", inst?.iban],
+            ["Betaaltermijn", inst?.betalingstermijn ? `${inst.betalingstermijn} dagen` : null],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k}><span style={{ color: C.label }}>{k}: </span>{v}</div>
+          ))}
+          {!inst?.iban && <div style={{ color: C.orange }}>⚠️ Vul je gegevens in voor facturen</div>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── NUC Upload Instellingen ───────────────────────────────────────────────────
 function NucInstellingen({ config, onUpdate }) {
   const [testStatus, setTestStatus] = useState(null);
@@ -1798,7 +1848,7 @@ function NucInstellingen({ config, onUpdate }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2049,6 +2099,9 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         </label>
       </Card>
 
+      {/* Salon instellingen */}
+      <SalonInstellingen inst={salonInst} onUpdate={onUpdateSalonInst} />
+
       {/* NUC bewijsstukken instellingen */}
       <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
 
@@ -2091,6 +2144,11 @@ export default function App() {
   const [kleuren, setKleuren] = useState([]);
   const [afspraken, setAfspraken] = useState([]);
   const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
+  const [salonInst, setSalonInst] = useState({
+    naam: "Gewoon bij Isolde", adres: "", postcode: "", stad: "",
+    kvk: "", btwNummer: "", iban: "", betalingstermijn: "14",
+    volgendFactuurnr: 1,
+  });
 
   const dbRef = useRef({});
   const isSavingRef = useRef(false);
@@ -2108,6 +2166,7 @@ export default function App() {
       if (db.kleuren) setKleuren(db.kleuren);
       if (db.afspraken) setAfspraken(db.afspraken);
       if (db.nucConfig) { setNucConfigState(db.nucConfig); setNucConfig(db.nucConfig); }
+      if (db.salonInst) setSalonInst(s => ({ ...s, ...db.salonInst }));
       setLoading(false);
     })();
 
@@ -2122,6 +2181,7 @@ export default function App() {
       if (nieuweData.kleuren) setKleuren(nieuweData.kleuren);
       if (nieuweData.afspraken) setAfspraken(nieuweData.afspraken);
       if (nieuweData.nucConfig) { setNucConfigState(nieuweData.nucConfig); setNucConfig(nieuweData.nucConfig); }
+      if (nieuweData.salonInst) setSalonInst(s => ({ ...s, ...nieuweData.salonInst }));
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -2250,6 +2310,107 @@ export default function App() {
     const updated = afspraken.filter(a => a.id !== id);
     setAfspraken(updated); await persist({ afspraken: updated }); showToast("Afspraak verwijderd");
   };
+  const updateSalonInst = async (inst) => {
+    setSalonInst(inst);
+    await persist({ salonInst: inst });
+    showToast("✓ Saloninstellingen opgeslagen");
+  };
+
+  const genereerFactuurNr = async () => {
+    const nr = salonInst.volgendFactuurnr || 1;
+    const jaar = new Date().getFullYear();
+    const label = `F${jaar}-${String(nr).padStart(3, "0")}`;
+    const bijgewerkt = { ...salonInst, volgendFactuurnr: nr + 1 };
+    setSalonInst(bijgewerkt);
+    await persist({ salonInst: bijgewerkt });
+    return label;
+  };
+
+  const maakFactuur = async (item) => {
+    const nr = await genereerFactuurNr();
+    const s = salonInst;
+    const vervalDatum = new Date(item.datum);
+    vervalDatum.setDate(vervalDatum.getDate() + parseInt(s.betalingstermijn || 14));
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factuur ${nr}</title>
+    <style>
+      body { font-family: 'Arial', sans-serif; margin: 0; padding: 40px; color: #1a1a2e; background: #fff; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 3px solid #a855f7; padding-bottom: 20px; }
+      .salon-naam { font-size: 24px; font-weight: 900; color: #a855f7; }
+      .salon-info { font-size: 12px; color: #666; line-height: 1.8; margin-top: 4px; }
+      .factuur-info { text-align: right; }
+      .factuur-nr { font-size: 28px; font-weight: 900; color: #1a1a2e; }
+      .factuur-meta { font-size: 12px; color: #666; line-height: 1.8; margin-top: 4px; }
+      .klant-blok { background: #f8f4ff; border-radius: 8px; padding: 16px 20px; margin-bottom: 30px; }
+      .klant-blok h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #a855f7; }
+      .klant-naam { font-size: 16px; font-weight: 700; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th { background: #a855f7; color: #fff; padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+      td { padding: 12px 14px; border-bottom: 1px solid #eee; font-size: 13px; }
+      tr:last-child td { border-bottom: none; }
+      .totalen { margin-left: auto; width: 280px; }
+      .totaal-rij { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+      .totaal-rij.eindtotaal { font-size: 16px; font-weight: 900; border-top: 2px solid #a855f7; padding-top: 10px; margin-top: 4px; color: #a855f7; }
+      .betaling { margin-top: 40px; background: #f8f4ff; border-radius: 8px; padding: 16px 20px; font-size: 12px; }
+      .betaling h3 { margin: 0 0 8px; color: #a855f7; font-size: 13px; }
+      .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 16px; }
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="salon-naam">💅 ${s.naam || "Gewoon bij Isolde"}</div>
+        <div class="salon-info">
+          ${s.adres ? `${s.adres}<br>` : ""}${s.postcode && s.stad ? `${s.postcode} ${s.stad}<br>` : ""}
+          ${s.kvk ? `KVK: ${s.kvk}<br>` : ""}${s.btwNummer ? `BTW: ${s.btwNummer}` : ""}
+        </div>
+      </div>
+      <div class="factuur-info">
+        <div class="factuur-nr">FACTUUR</div>
+        <div class="factuur-meta">
+          Nummer: <strong>${nr}</strong><br>
+          Datum: <strong>${fmtDate(item.datum)}</strong><br>
+          Vervaldatum: <strong>${fmtDate(vervalDatum.toISOString().slice(0,10))}</strong>
+        </div>
+      </div>
+    </div>
+
+    ${item.klant ? `<div class="klant-blok"><h3>Factuur aan</h3><div class="klant-naam">${item.klant}</div></div>` : ""}
+
+    <table>
+      <thead><tr><th>Omschrijving</th><th style="text-align:right">Prijs excl. BTW</th><th style="text-align:right">BTW 21%</th><th style="text-align:right">Totaal incl. BTW</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>${item.behandeling}</td>
+          <td style="text-align:right">${fmt(item.exclBtw || 0)}</td>
+          <td style="text-align:right">${fmt(item.btw || 0)}</td>
+          <td style="text-align:right"><strong>${fmt(item.prijs || 0)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="totalen">
+      <div class="totaal-rij"><span>Subtotaal excl. BTW</span><span>${fmt(item.exclBtw || 0)}</span></div>
+      <div class="totaal-rij"><span>BTW 21%</span><span>${fmt(item.btw || 0)}</span></div>
+      <div class="totaal-rij eindtotaal"><span>Totaal te betalen</span><span>${fmt(item.prijs || 0)}</span></div>
+    </div>
+
+    <div class="betaling">
+      <h3>Betalingsinformatie</h3>
+      ${s.iban ? `Maak over op <strong>${s.iban}</strong> t.n.v. <strong>${s.naam || "Gewoon bij Isolde"}</strong><br>` : ""}
+      Onder vermelding van factuurnummer <strong>${nr}</strong><br>
+      Betalingstermijn: ${s.betalingstermijn || 14} dagen (voor ${fmtDate(vervalDatum.toISOString().slice(0,10))})
+      ${item.betaalwijze && item.betaalwijze !== "Overschrijving" ? `<br><em>Reeds betaald via ${item.betaalwijze}</em>` : ""}
+    </div>
+
+    <div class="footer">Bedankt voor uw vertrouwen! 💅 ${s.naam || "Gewoon bij Isolde"}</div>
+    </body></html>`;
+
+    const win = window.open("", "_blank", "width=800,height=900");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  };
+
   const updateNucConfig = async (config) => {
     setNucConfigState(config);
     setNucConfig(config); // ook lokaal opslaan als fallback
@@ -2315,7 +2476,7 @@ export default function App() {
 
   const pageProps = {
     home:      <Dashboard inkomsten={inkomsten} uitgaven={uitgaven} kleuren={kleuren} />,
-    inkomsten: <Inkomsten data={inkomsten} prijslijst={prijslijst} klanten={klanten} onAdd={addInkomst} onDelete={deleteItem} onEdit={editInkomst} />,
+    inkomsten: <Inkomsten data={inkomsten} prijslijst={prijslijst} klanten={klanten} onAdd={addInkomst} onDelete={deleteItem} onEdit={editInkomst} onMaakFactuur={maakFactuur} />,
     uitgaven:  <Uitgaven data={uitgaven} leveranciers={leveranciers} onAdd={addUitgave} onDelete={deleteItem} onEdit={editUitgave} />,
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
@@ -2330,7 +2491,8 @@ export default function App() {
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
                   onRestoreBackup={restoreBackup}
-                  nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig} />,
+                  nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
+                  salonInst={salonInst} onUpdateSalonInst={updateSalonInst} />,
   };
 
   return (
