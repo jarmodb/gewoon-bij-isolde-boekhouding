@@ -749,10 +749,11 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // RELATIES (klanten + leveranciers)
 // ════════════════════════════════════════════════════════════════════════════
-function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier, onEditLeverancier }) {
+function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier, onEditLeverancier, inkomsten, afspraken, facturen }) {
   const [tab, setTab] = useState("klanten");
   const [modal, setModal] = useState(null);
   const [editKlant, setEditKlant] = useState(null);
+  const [geschiedenisKlant, setGeschiedenisKlant] = useState(null);
   const [editLev, setEditLev] = useState(null);
   const [confirmKlantId, setConfirmKlantId] = useState(null);
   const [confirmLevId, setConfirmLevId] = useState(null);
@@ -822,7 +823,7 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
       {tab === "klanten" && (
         filteredK.length === 0 ? <EmptyState icon="👤" text="Nog geen klanten toegevoegd" /> :
         filteredK.map(k => (
-          <Card key={k.id}>
+          <Card key={k.id} onClick={() => setGeschiedenisKlant(k)} style={{ cursor: "pointer" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{k.voornaam} {k.achternaam}</div>
@@ -832,9 +833,9 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
                 {k.notities && <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontStyle: "italic" }}>{k.notities}</div>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openEditKlant(k)}
+                <button onClick={e => { e.stopPropagation(); openEditKlant(k); }}
                   style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 16 }}>✏️</button>
-                <button onClick={() => setConfirmKlantId(k.id)}
+                <button onClick={e => { e.stopPropagation(); setConfirmKlantId(k.id); }}
                   style={{ background: "none", border: "none", color: "rgba(248,113,113,0.4)", cursor: "pointer", fontSize: 16 }}>🗑</button>
               </div>
             </div>
@@ -892,6 +893,69 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
         <Textarea label="Notities" value={lForm.notities} onChange={e => setLForm(f => ({ ...f, notities: e.target.value }))} />
         <Btn onClick={submitLev} fullWidth disabled={!lForm.bedrijf} style={{ marginTop: 4 }}>Opslaan</Btn>
       </Modal>
+
+      {/* Klantgeschiedenis modal */}
+      {geschiedenisKlant && (() => {
+        const k = geschiedenisKlant;
+        const naam = `${k.voornaam} ${k.achternaam}`.trim();
+        const kInk = (inkomsten || []).filter(x => x.klant === naam).sort((a,b) => b.datum.localeCompare(a.datum));
+        const kAfs = (afspraken || []).filter(x => x.klantNaam === naam).sort((a,b) => b.datum.localeCompare(a.datum));
+        const kFac = (facturen || []).filter(x => x.klant === naam).sort((a,b) => b.datum.localeCompare(a.datum));
+        const totaal = kInk.reduce((s,x) => s + (x.prijs||0), 0);
+        const laatste = kInk[0]?.datum || kAfs[0]?.datum;
+        return (
+          <Modal open={true} onClose={() => setGeschiedenisKlant(null)} title={`👤 ${naam}`}>
+            {/* Stats */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+              {[
+                ["Bezoeken", kInk.length, C.green],
+                ["Totaal", fmt(totaal), C.purple],
+                ["Afspraken", kAfs.length, "#6366f1"],
+              ].map(([l,v,c]) => (
+                <div key={l} style={{ background: `${c}18`, border: `1px solid ${c}30`, borderRadius: 12, padding: "10px 8px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: c, fontWeight: 700 }}>{l}</div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", marginTop: 2 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {laatste && <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>Laatste bezoek: {fmtDate(laatste)}</div>}
+
+            {/* Inkomsten */}
+            {kInk.length > 0 && (
+              <>
+                <SectionTitle>Behandelingen</SectionTitle>
+                {kInk.slice(0,5).map(x => (
+                  <div key={x.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div>
+                      <div style={{ fontSize: 13, color: "#e2d0f8" }}>{x.behandeling}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(x.datum)}{x.betaalwijze ? ` · ${x.betaalwijze}` : ""}</div>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{fmt(x.prijs)}</div>
+                  </div>
+                ))}
+                {kInk.length > 5 && <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>+{kInk.length - 5} meer</div>}
+              </>
+            )}
+
+            {/* Komende afspraken */}
+            {kAfs.filter(a => a.datum >= TODAY && a.status !== "geannuleerd").length > 0 && (
+              <>
+                <SectionTitle style={{ marginTop: 14 }}>Komende afspraken</SectionTitle>
+                {kAfs.filter(a => a.datum >= TODAY && a.status !== "geannuleerd").slice(0,3).map(a => (
+                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ fontSize: 13, color: "#e2d0f8" }}>{fmtDate(a.datum)} {a.tijdstip}</div>
+                    <Badge color={STATUS_KLEUR[a.status] || C.purple}>{a.status}</Badge>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {kInk.length === 0 && kAfs.length === 0 && (
+              <div style={{ textAlign: "center", padding: "20px", color: C.muted, fontSize: 13 }}>Nog geen geschiedenis</div>
+            )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
@@ -1092,7 +1156,7 @@ function weekMaandag(d) {
   r.setDate(r.getDate() - (dw === 0 ? 6 : dw - 1)); return r;
 }
 
-function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien, onAddKlant }) {
+function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien, onAddKlant, inkomsten, facturen }) {
   const [weergave, setWeergave] = useState("week");
   const [peildatum, setPeildatum] = useState(new Date(TODAY));
   const [modal, setModal] = useState(false);
@@ -1175,6 +1239,17 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginLeft: 8, flexShrink: 0 }}>
           <button onClick={() => openEdit(a)} style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
+          {(a.status === "gepland" || a.status === "bevestigd") && (() => {
+            const klant = klanten.find(k => `${k.voornaam} ${k.achternaam}`.trim() === a.klantNaam);
+            const tel = klant?.telefoon?.replace(/\D/g, "");
+            if (!tel) return null;
+            const tekst = encodeURIComponent(`Hoi ${klant.voornaam}! 💅 Herinnering: je afspraak is op ${fmtDate(a.datum)} om ${a.tijdstip}${a.behandeling ? ` voor ${a.behandeling}` : ""}. Tot dan!`);
+            return (
+              <button onClick={() => window.open(`https://wa.me/${tel}?text=${tekst}`, "_blank")}
+                title="WhatsApp herinnering sturen"
+                style={{ background: "none", border: "none", color: "rgba(37,211,102,0.8)", cursor: "pointer", fontSize: 15 }}>💬</button>
+            );
+          })()}
           {(a.status === "gepland" || a.status === "bevestigd") && (
             <button onClick={() => onVoltooien(a)} title="Voltooien + inkomen aanmaken"
               style={{ background: "none", border: "none", color: "rgba(34,197,94,0.8)", cursor: "pointer", fontSize: 15 }}>✅</button>
@@ -1844,6 +1919,10 @@ function Facturen({ facturen, salonInst, onDelete, onEdit, onDownload }) {
               <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 10 }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.green, marginBottom: 4 }}>{fmt(f.prijs)}</div>
                 <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  {f.status !== "betaald" && (
+                    <button onClick={() => onEdit({ ...f, status: "betaald" })} title="Markeer als betaald"
+                      style={{ background: "none", border: "none", color: "rgba(34,197,94,0.8)", cursor: "pointer", fontSize: 15 }}>✅</button>
+                  )}
                   <button onClick={() => onDownload(f)} title="Download/print"
                     style={{ background: "none", border: "none", color: "rgba(99,168,233,0.7)", cursor: "pointer", fontSize: 15 }}>⬇️</button>
                   <button onClick={() => openEdit(f)}
@@ -2735,10 +2814,12 @@ export default function App() {
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
                   onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier}
-                  onEditLeverancier={editLeverancierHandler} />,
+                  onEditLeverancier={editLeverancierHandler}
+                  inkomsten={inkomsten} afspraken={afspraken} facturen={facturen} />,
     planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
-                  onVoltooien={voltooiAfspraak} onAddKlant={addKlant} />,
+                  onVoltooien={voltooiAfspraak} onAddKlant={addKlant}
+                  inkomsten={inkomsten} facturen={facturen} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
     facturen:  <Facturen facturen={facturen} salonInst={salonInst}
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
