@@ -93,18 +93,32 @@ app.post("/upload", upload.single("bestand"), (req, res) => {
   res.json({ pad: relativePad, ok: true });
 });
 
-// Zoek Chrome executable in de puppeteer cache (ongeacht versie)
+// Zoek browser: eerst puppeteer cache, dan systeem Chrome/Edge
 function vindChrome() {
+  // 1. Puppeteer cache (alle versies)
   const userDir = process.env.USERPROFILE || process.env.HOME || "C:\\Users\\jarmo";
   const cacheDir = path.join(userDir, ".cache", "puppeteer", "chrome");
-  if (!fs.existsSync(cacheDir)) return null;
-  for (const versie of fs.readdirSync(cacheDir)) {
-    for (const submap of ["chrome-win64", "chrome-win32", "chrome-linux"]) {
-      const exe = path.join(cacheDir, versie, submap, "chrome.exe");
-      if (fs.existsSync(exe)) { console.log("Chrome gevonden:", exe); return exe; }
-      const exeLinux = path.join(cacheDir, versie, submap, "chrome");
-      if (fs.existsSync(exeLinux)) return exeLinux;
+  if (fs.existsSync(cacheDir)) {
+    for (const versie of fs.readdirSync(cacheDir)) {
+      for (const submap of ["chrome-win64", "chrome-win32"]) {
+        const exe = path.join(cacheDir, versie, submap, "chrome.exe");
+        if (fs.existsSync(exe)) { console.log("Chrome (cache) gevonden:", exe); return exe; }
+      }
     }
+  }
+  // 2. Systeem Chrome
+  for (const p of [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  ]) {
+    if (fs.existsSync(p)) { console.log("Chrome (systeem) gevonden:", p); return p; }
+  }
+  // 3. Microsoft Edge (altijd aanwezig op Windows 10/11)
+  for (const p of [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  ]) {
+    if (fs.existsSync(p)) { console.log("Edge gevonden:", p); return p; }
   }
   return null;
 }
