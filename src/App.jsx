@@ -2541,8 +2541,9 @@ export default function App() {
 
   const genereerFactuurNr = async () => {
     const jaar = new Date().getFullYear();
-    // Altijd verder na het hoogste bestaande nummer (ook na verwijderen)
-    const hoogste = facturen
+    // Gebruik dbRef zodat we altijd de meest actuele lijst hebben
+    const bestaande = dbRef.current.facturen || [];
+    const hoogste = bestaande
       .filter(f => f.nr?.startsWith(`F${jaar}-`))
       .map(f => parseInt(f.nr.split("-")[1]) || 0)
       .reduce((max, n) => Math.max(max, n), 0);
@@ -2565,7 +2566,6 @@ export default function App() {
     const verval = new Date(item.datum);
     verval.setDate(verval.getDate() + parseInt(s.betalingstermijn || 14));
 
-    // Factuur data object
     const factuurObj = {
       id: uid(), nr,
       datum: item.datum,
@@ -2582,13 +2582,15 @@ export default function App() {
       opmerkingen: "",
     };
 
+    // Opslaan via dbRef (geen stale closure)
+    const lijst1 = [...(dbRef.current.facturen || []), factuurObj];
+    setFacturen(lijst1);
+    await persist({ facturen: lijst1 });
+
     // HTML genereren
     const html = genereerFactuurHtml(factuurObj, s);
 
-    // Opslaan in lijst
-    await addFactuur(factuurObj);
-
-    // Upload naar NAS in aparte facturen/ map (op de achtergrond)
+    // NAS upload in aparte facturen/ map
     try {
       const { serverUrl, apiKey } = getNucConfig();
       if (serverUrl && apiKey) {
@@ -2604,14 +2606,15 @@ export default function App() {
         });
         if (res.ok) {
           const data = await res.json();
-          const bijgewerkt = { ...factuurObj, nasPad: data.pad };
-          const updated = [...facturen, bijgewerkt].map(x => x.id === bijgewerkt.id ? bijgewerkt : x);
-          setFacturen(updated); await persist({ facturen: updated });
+          const lijst2 = (dbRef.current.facturen || []).map(x =>
+            x.id === factuurObj.id ? { ...x, nasPad: data.pad } : x
+          );
+          setFacturen(lijst2);
+          await persist({ facturen: lijst2 });
         }
       }
-    } catch {}
+    } catch (e) { console.warn("NAS upload factuur:", e); }
 
-    // Print
     const win = window.open("", "_blank", "width=820,height=1000");
     win.document.write(html); win.document.close(); win.focus();
     showToast("✓ Factuur aangemaakt en opgeslagen");
