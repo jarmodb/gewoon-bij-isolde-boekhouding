@@ -93,6 +93,22 @@ app.post("/upload", upload.single("bestand"), (req, res) => {
   res.json({ pad: relativePad, ok: true });
 });
 
+// Zoek Chrome executable in de puppeteer cache (ongeacht versie)
+function vindChrome() {
+  const userDir = process.env.USERPROFILE || process.env.HOME || "C:\\Users\\jarmo";
+  const cacheDir = path.join(userDir, ".cache", "puppeteer", "chrome");
+  if (!fs.existsSync(cacheDir)) return null;
+  for (const versie of fs.readdirSync(cacheDir)) {
+    for (const submap of ["chrome-win64", "chrome-win32", "chrome-linux"]) {
+      const exe = path.join(cacheDir, versie, submap, "chrome.exe");
+      if (fs.existsSync(exe)) { console.log("Chrome gevonden:", exe); return exe; }
+      const exeLinux = path.join(cacheDir, versie, submap, "chrome");
+      if (fs.existsSync(exeLinux)) return exeLinux;
+    }
+  }
+  return null;
+}
+
 // HTML → PDF converteren en opslaan op NAS
 app.post("/html-to-pdf", express.json({ limit: "8mb" }), async (req, res) => {
   const { html, pad, bestandsnaam } = req.body;
@@ -102,9 +118,16 @@ app.post("/html-to-pdf", express.json({ limit: "8mb" }), async (req, res) => {
   try { fs.mkdirSync(volledigeMap, { recursive: true }); } catch {}
   const volledigPad = path.join(volledigeMap, bestandsnaam);
 
+  const chromePath = vindChrome();
+  if (!chromePath) {
+    console.error("Geen Chrome gevonden in cache. Run: npx puppeteer browsers install chrome");
+    return res.status(500).json({ error: "Chrome niet gevonden. Run: npx puppeteer browsers install chrome" });
+  }
+
   try {
     const browser = await puppeteer.launch({
       headless: true,
+      executablePath: chromePath,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     });
     const page = await browser.newPage();
