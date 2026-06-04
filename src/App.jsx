@@ -749,7 +749,7 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // RELATIES (klanten + leveranciers)
 // ════════════════════════════════════════════════════════════════════════════
-function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier, onEditLeverancier, inkomsten, afspraken, facturen }) {
+function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier, onEditLeverancier, inkomsten, afspraken, facturen, onStempel }) {
   const [tab, setTab] = useState("klanten");
   const [modal, setModal] = useState(null);
   const [editKlant, setEditKlant] = useState(null);
@@ -758,7 +758,7 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
   const [confirmKlantId, setConfirmKlantId] = useState(null);
   const [confirmLevId, setConfirmLevId] = useState(null);
   const [search, setSearch] = useState("");
-  const LEEG_K = { voornaam: "", achternaam: "", telefoon: "", email: "", vasteBeh: "", notities: "" };
+  const LEEG_K = { voornaam: "", achternaam: "", telefoon: "", email: "", vasteBeh: "", notities: "", stempels: 0, stempelDoel: 10, stempelBeloning: "" };
   const LEEG_L = { bedrijf: "", contact: "", telefoon: "", email: "", categorie: "", notities: "" };
   const [kForm, setKForm] = useState(LEEG_K);
   const [lForm, setLForm] = useState(LEEG_L);
@@ -773,7 +773,8 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
   const openEditKlant = (k) => {
     setEditKlant(k);
     setKForm({ voornaam: k.voornaam, achternaam: k.achternaam || "", telefoon: k.telefoon || "",
-      email: k.email || "", vasteBeh: k.vasteBeh || "", notities: k.notities || "" });
+      email: k.email || "", vasteBeh: k.vasteBeh || "", notities: k.notities || "",
+      stempels: k.stempels || 0, stempelDoel: k.stempelDoel || 10, stempelBeloning: k.stempelBeloning || "" });
     setModal("klant");
   };
 
@@ -825,14 +826,56 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
         filteredK.map(k => (
           <Card key={k.id} onClick={() => setGeschiedenisKlant(k)} style={{ cursor: "pointer" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{k.voornaam} {k.achternaam}</div>
                 {k.telefoon && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>📞 {k.telefoon}</div>}
                 {k.email && <div style={{ fontSize: 12, color: C.muted }}>✉️ {k.email}</div>}
                 {k.vasteBeh && <div style={{ marginTop: 7 }}><Badge color={C.purple}>{k.vasteBeh}</Badge></div>}
                 {k.notities && <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontStyle: "italic" }}>{k.notities}</div>}
+
+                {/* Stempelkaart */}
+                {k.stempelDoel > 0 && (() => {
+                  const stempels = k.stempels || 0;
+                  const doel = k.stempelDoel || 10;
+                  const vol = stempels >= doel;
+                  const rijen = Math.ceil(doel / 5);
+                  return (
+                    <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
+                      {vol && (
+                        <div style={{ fontSize: 12, fontWeight: 800, color: C.orange, marginBottom: 6 }}>
+                          🎉 Beloning behaald! {k.stempelBeloning ? `→ ${k.stempelBeloning}` : ""}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                        {Array.from({ length: doel }, (_, i) => (
+                          <span key={i} style={{ fontSize: 16, opacity: i < stempels ? 1 : 0.2 }}>💅</span>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 11, color: C.muted }}>{stempels}/{doel}</span>
+                        {!vol && (
+                          <button onClick={() => onStempel(k, 1)} style={{
+                            background: `linear-gradient(135deg,${C.pink},${C.purple})`, border: "none",
+                            borderRadius: 8, padding: "3px 10px", color: "#fff", fontSize: 11,
+                            fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Stempel</button>
+                        )}
+                        {vol && (
+                          <button onClick={() => onStempel(k, -stempels)} style={{
+                            background: "rgba(251,146,60,0.2)", border: "1px solid rgba(251,146,60,0.4)",
+                            borderRadius: 8, padding: "3px 10px", color: C.orange, fontSize: 11,
+                            fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✓ Verzilverd</button>
+                        )}
+                        {stempels > 0 && !vol && (
+                          <button onClick={() => onStempel(k, -1)} style={{
+                            background: "none", border: "none", color: C.muted, fontSize: 11,
+                            cursor: "pointer", fontFamily: "inherit" }}>−</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 8 }}>
                 <button onClick={e => { e.stopPropagation(); openEditKlant(k); }}
                   style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 16 }}>✏️</button>
                 <button onClick={e => { e.stopPropagation(); setConfirmKlantId(k.id); }}
@@ -881,6 +924,16 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
         <Select label="Vaste behandeling" value={kForm.vasteBeh} onChange={e => setKForm(f => ({ ...f, vasteBeh: e.target.value }))}
           options={prijslijst.filter(p => p.naam).map(p => p.naam)} />
         <Textarea label="Notities / allergieën" value={kForm.notities} onChange={e => setKForm(f => ({ ...f, notities: e.target.value }))} />
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14, marginTop: 4 }}>
+          <SectionTitle>Stempelkaart</SectionTitle>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}><Input label="Aantal stempels voor beloning" type="number" min="0" max="50"
+              value={kForm.stempelDoel} onChange={e => setKForm(f => ({ ...f, stempelDoel: parseInt(e.target.value) || 0 }))} /></div>
+          </div>
+          <Input label="Beloning omschrijving" value={kForm.stempelBeloning}
+            onChange={e => setKForm(f => ({ ...f, stempelBeloning: e.target.value }))}
+            placeholder="Bijv. Gratis gellak behandeling" />
+        </div>
         <Btn onClick={submitKlant} fullWidth disabled={!kForm.voornaam} style={{ marginTop: 4 }}>Opslaan</Btn>
       </Modal>
 
@@ -2573,6 +2626,16 @@ export default function App() {
     setLeveranciers(updated); await persist({ leveranciers: updated }); showToast("Leverancier verwijderd");
   };
 
+  const geefStempel = async (klant, aantal) => {
+    const nieuwAantal = Math.max(0, (klant.stempels || 0) + aantal);
+    const bijgewerkt = { ...klant, stempels: nieuwAantal };
+    const updated = klanten.map(x => x.id === klant.id ? bijgewerkt : x);
+    setKlanten(updated);
+    await persist({ klanten: updated });
+    if (aantal > 0) showToast(`💅 Stempel gegeven! ${nieuwAantal}/${klant.stempelDoel || 10}`);
+    else if (nieuwAantal === 0) showToast("✓ Stempelkaart gereset");
+  };
+
   const editLeverancierHandler = async (item) => {
     const updated = leveranciers.map(x => x.id === item.id ? item : x);
     setLeveranciers(updated); await persist({ leveranciers: updated }); showToast("✓ Leverancier bijgewerkt");
@@ -2815,7 +2878,8 @@ export default function App() {
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
                   onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier}
                   onEditLeverancier={editLeverancierHandler}
-                  inkomsten={inkomsten} afspraken={afspraken} facturen={facturen} />,
+                  inkomsten={inkomsten} afspraken={afspraken} facturen={facturen}
+                  onStempel={geefStempel} />,
     planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
                   onVoltooien={voltooiAfspraak} onAddKlant={addKlant}
