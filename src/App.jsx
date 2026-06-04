@@ -1376,8 +1376,10 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           <button onClick={() => openEdit(a)} style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
           {(a.status === "gepland" || a.status === "bevestigd") && (() => {
             const klant = klanten.find(k => `${k.voornaam} ${k.achternaam}`.trim() === a.klantNaam);
-            const tel = klant?.telefoon?.replace(/\D/g, "");
-            if (!tel) return null;
+            const telRaw = klant?.telefoon?.replace(/\D/g, "") || "";
+            if (!telRaw) return null;
+            // Zet Nederlandse notatie om: 06... → 316...
+            const tel = telRaw.startsWith("0") ? "31" + telRaw.slice(1) : telRaw;
             const tekst = encodeURIComponent(`Hoi ${klant.voornaam}! 💅 Herinnering: je afspraak is op ${fmtDate(a.datum)} om ${a.tijdstip}${a.behandeling ? ` voor ${a.behandeling}` : ""}. Tot dan!`);
             return (
               <button onClick={() => window.open(`https://wa.me/${tel}?text=${tekst}`, "_blank")}
