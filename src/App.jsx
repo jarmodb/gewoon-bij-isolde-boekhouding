@@ -747,10 +747,11 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // RELATIES (klanten + leveranciers)
 // ════════════════════════════════════════════════════════════════════════════
-function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier }) {
+function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant, onEditKlant, onAddLeverancier, onDeleteLeverancier, onEditLeverancier }) {
   const [tab, setTab] = useState("klanten");
   const [modal, setModal] = useState(null);
   const [editKlant, setEditKlant] = useState(null);
+  const [editLev, setEditLev] = useState(null);
   const [confirmKlantId, setConfirmKlantId] = useState(null);
   const [confirmLevId, setConfirmLevId] = useState(null);
   const [search, setSearch] = useState("");
@@ -758,6 +759,13 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
   const LEEG_L = { bedrijf: "", contact: "", telefoon: "", email: "", categorie: "", notities: "" };
   const [kForm, setKForm] = useState(LEEG_K);
   const [lForm, setLForm] = useState(LEEG_L);
+
+  const openEditLev = (l) => {
+    setEditLev(l);
+    setLForm({ bedrijf: l.bedrijf, contact: l.contact || "", telefoon: l.telefoon || "",
+      email: l.email || "", categorie: l.categorie || "", notities: l.notities || "" });
+    setModal("leverancier");
+  };
 
   const openEditKlant = (k) => {
     setEditKlant(k);
@@ -775,9 +783,9 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
 
   const submitLev = () => {
     if (!lForm.bedrijf) return;
-    onAddLeverancier({ id: uid(), ...lForm });
-    setModal(null);
-    setLForm(LEEG_L);
+    if (editLev) { onEditLeverancier({ ...editLev, ...lForm }); }
+    else { onAddLeverancier({ id: uid(), ...lForm }); }
+    setModal(null); setEditLev(null); setLForm(LEEG_L);
   };
 
   const filteredK = klanten.filter(k => !search ||
@@ -845,8 +853,12 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
                 {l.categorie && <div style={{ marginTop: 7 }}><Badge color={C.orange}>{l.categorie}</Badge></div>}
                 {l.notities && <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontStyle: "italic" }}>{l.notities}</div>}
               </div>
-              <button onClick={() => setConfirmLevId(l.id)}
-                style={{ background: "none", border: "none", color: "rgba(248,113,113,0.4)", cursor: "pointer", fontSize: 18, alignSelf: "flex-start" }}>🗑</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => openEditLev(l)}
+                  style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 16 }}>✏️</button>
+                <button onClick={() => setConfirmLevId(l.id)}
+                  style={{ background: "none", border: "none", color: "rgba(248,113,113,0.4)", cursor: "pointer", fontSize: 16 }}>🗑</button>
+              </div>
             </div>
           </Card>
         ))
@@ -869,7 +881,7 @@ function Relaties({ klanten, leveranciers, prijslijst, onAddKlant, onDeleteKlant
         <Btn onClick={submitKlant} fullWidth disabled={!kForm.voornaam} style={{ marginTop: 4 }}>Opslaan</Btn>
       </Modal>
 
-      <Modal open={modal === "leverancier"} onClose={() => setModal(null)} title="Leverancier toevoegen">
+      <Modal open={modal === "leverancier"} onClose={() => { setModal(null); setEditLev(null); }} title={editLev ? "Leverancier bewerken" : "Leverancier toevoegen"}>
         <Input label="Bedrijfsnaam *" value={lForm.bedrijf} onChange={e => setLForm(f => ({ ...f, bedrijf: e.target.value }))} />
         <Input label="Contactpersoon" value={lForm.contact} onChange={e => setLForm(f => ({ ...f, contact: e.target.value }))} />
         <Input label="Telefoon" type="tel" value={lForm.telefoon} onChange={e => setLForm(f => ({ ...f, telefoon: e.target.value }))} />
@@ -1119,14 +1131,19 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
   const navPeriode = (dir) => {
     const d = new Date(peildatum);
     if (weergave === "maand") d.setMonth(d.getMonth() + dir);
+    else if (weergave === "dag") d.setDate(d.getDate() + dir);
     else d.setDate(d.getDate() + 7 * dir);
     setPeildatum(d);
   };
+
+  const openDag = (datum) => { setPeildatum(new Date(datum)); setWeergave("dag"); };
 
   const opDag = (str) => afspraken.filter(a => a.datum === str).sort((a, b) => a.tijdstip.localeCompare(b.tijdstip));
 
   const periodeLabel = weergave === "maand"
     ? `${PLAN_MAANDEN[peildatum.getMonth()]} ${peildatum.getFullYear()}`
+    : weergave === "dag"
+    ? `${PLAN_DAGEN[peildatum.getDay() === 0 ? 6 : peildatum.getDay() - 1]} ${peildatum.getDate()} ${PLAN_MAANDEN[peildatum.getMonth()]} ${peildatum.getFullYear()}`
     : (() => {
         const s = weekMaandag(peildatum); const e = new Date(s); e.setDate(e.getDate() + 6);
         return `${s.getDate()} ${PLAN_MAANDEN[s.getMonth()]} – ${e.getDate()} ${PLAN_MAANDEN[e.getMonth()]} ${e.getFullYear()}`;
@@ -1166,6 +1183,23 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
     </Card>
   );
 
+  const DagView = () => {
+    const s = dagStr(peildatum);
+    const lijst = opDag(s);
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 13, color: C.muted }}>{lijst.length} afspraak{lijst.length !== 1 ? "en" : ""}</div>
+          <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>
+        </div>
+        {lijst.length === 0
+          ? <EmptyState icon="📅" text="Geen afspraken op deze dag" />
+          : lijst.map(a => <AfspraakKaart key={a.id} a={a} />)
+        }
+      </div>
+    );
+  };
+
   const WeekView = () => {
     const ma = weekMaandag(peildatum);
     const dagen = Array.from({ length: 7 }, (_, i) => { const d = new Date(ma); d.setDate(d.getDate() + i); return d; });
@@ -1175,7 +1209,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           {dagen.map(d => {
             const s = dagStr(d); const isVandaag = s === TODAY; const n = opDag(s).length;
             return (
-              <div key={s} onClick={() => openNieuw(s)} style={{ textAlign: "center", padding: "8px 2px", borderRadius: 12, cursor: "pointer",
+              <div key={s} onClick={() => openDag(s)} style={{ textAlign: "center", padding: "8px 2px", borderRadius: 12, cursor: "pointer",
                 background: isVandaag ? `linear-gradient(135deg,${C.pink}33,${C.purple}33)` : "rgba(255,255,255,0.04)",
                 border: `1px solid ${isVandaag ? C.pink + "66" : "rgba(255,255,255,0.08)"}` }}>
                 <div style={{ fontSize: 9, color: C.muted, fontWeight: 700 }}>{PLAN_DAGEN[d.getDay() === 0 ? 6 : d.getDay() - 1]}</div>
@@ -1222,7 +1256,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
                 border: `1px solid ${isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}` }}>
                 <div style={{ fontSize: 11, fontWeight: isVandaag ? 900 : 600, color: isVandaag ? C.pink : "#fff", marginBottom: 2 }}>{d.getDate()}</div>
                 {lijst.slice(0, 2).map(a => (
-                  <div key={a.id} onClick={e => { e.stopPropagation(); openEdit(a); }} style={{
+                  <div key={a.id} onClick={e => { e.stopPropagation(); openDag(s); }} style={{
                     fontSize: 8, fontWeight: 700, color: "#fff", background: (STATUS_KLEUR[a.status] || C.purple) + "cc",
                     borderRadius: 3, padding: "1px 3px", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>{a.tijdstip} {a.klantNaam || a.behandeling}</div>
@@ -1291,7 +1325,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
         <div style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: "#fff" }}>{periodeLabel}</div>
         <button onClick={() => navPeriode(1)} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 13px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>›</button>
         <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)" }}>
-          {[["week","Week"],["maand","Maand"]].map(([v, l]) => (
+          {[["dag","Dag"],["week","Week"],["maand","Maand"]].map(([v, l]) => (
             <button key={v} onClick={() => setWeergave(v)} style={{ padding: "8px 11px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: "inherit",
               background: weergave === v ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
               color: weergave === v ? "#fff" : C.muted }}>{l}</button>
@@ -1304,7 +1338,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
         <button onClick={() => setPeildatum(new Date(TODAY))} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 14px", color: C.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Vandaag</button>
       </div>
 
-      {weergave === "week" ? <WeekView /> : <MaandView />}
+      {weergave === "dag" ? <DagView /> : weergave === "week" ? <WeekView /> : <MaandView />}
 
       <ConfirmDialog open={!!confirmId} message="Deze afspraak wordt permanent verwijderd."
         onCancel={() => setConfirmId(null)}
@@ -1610,6 +1644,41 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         )}
       </Card>
 
+      {/* BTW kwartaaloverzicht */}
+      <Card>
+        <SectionTitle>BTW-aangifte per kwartaal {new Date().getFullYear()}</SectionTitle>
+        {[["Q1","Jan–Mar",[0,1,2]],["Q2","Apr–Jun",[3,4,5]],["Q3","Jul–Sep",[6,7,8]],["Q4","Okt–Dec",[9,10,11]]].map(([q, label, maanden]) => {
+          const jaar = new Date().getFullYear();
+          const btwOntvangen = inkomsten
+            .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+            .reduce((s, x) => s + (x.btw || 0), 0);
+          const btwBetaald = uitgaven
+            .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+            .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
+          const teBetalen = btwOntvangen - btwBetaald;
+          return (
+            <div key={q} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{q}</span>
+                  <span style={{ fontSize: 11, color: C.muted, marginLeft: 6 }}>{label}</span>
+                </div>
+                <Badge color={teBetalen > 0 ? C.red : C.green}>
+                  {teBetalen > 0 ? `▲ ${fmt(teBetalen)}` : `▼ ${fmt(Math.abs(teBetalen))}`}
+                </Badge>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 11, color: C.muted }}>
+                <span>Ontvangen: <span style={{ color: C.green }}>{fmt(btwOntvangen)}</span></span>
+                <span>Betaald: <span style={{ color: C.orange }}>{fmt(btwBetaald)}</span></span>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+          ▲ = nog te betalen aan belastingdienst · ▼ = teruggave
+        </div>
+      </Card>
+
       {/* Export */}
       <Card>
         <SectionTitle>Exporteren voor boekhouder</SectionTitle>
@@ -1863,6 +1932,11 @@ export default function App() {
     setLeveranciers(updated); await persist({ leveranciers: updated }); showToast("Leverancier verwijderd");
   };
 
+  const editLeverancierHandler = async (item) => {
+    const updated = leveranciers.map(x => x.id === item.id ? item : x);
+    setLeveranciers(updated); await persist({ leveranciers: updated }); showToast("✓ Leverancier bijgewerkt");
+  };
+
   const updatePrijslijst = async (lijst) => {
     setPrijslijst(lijst); await persist({ prijslijst: lijst }); showToast("✓ Prijslijst opgeslagen");
   };
@@ -1947,7 +2021,8 @@ export default function App() {
     uitgaven:  <Uitgaven data={uitgaven} leveranciers={leveranciers} onAdd={addUitgave} onDelete={deleteItem} onEdit={editUitgave} />,
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
-                  onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier} />,
+                  onAddLeverancier={addLeverancier} onDeleteLeverancier={deleteLeverancier}
+                  onEditLeverancier={editLeverancierHandler} />,
     planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
                   onVoltooien={voltooiAfspraak} onAddKlant={addKlant} />,
