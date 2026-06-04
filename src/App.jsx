@@ -1713,6 +1713,170 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
   );
 }
 
+// ── Brand CSS + Factuur HTML generator (module-niveau) ───────────────────────
+const BRAND_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Montserrat',sans-serif; background:#fff; color:#2a1f1f; }
+  .serif { font-family:'Cormorant Garamond',serif; }
+  .rose { color:#c4938a; }
+  .muted { color:#888; }
+`;
+
+function genereerFactuurHtml(factuur, s) {
+  const logoHtml = s?.logoBase64
+    ? `<img src="${s.logoBase64}" style="max-height:80px;max-width:240px;object-fit:contain;" />`
+    : `<div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:2px;color:#2a1f1f">${s?.naam || "Gewoon bij Isolde"}</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factuur ${factuur.nr}</title><style>
+  ${BRAND_CSS}
+  body{padding:48px;max-width:800px;margin:0 auto}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:28px;margin-bottom:32px;border-bottom:1px solid #e8d5d0}
+  .salon-info{font-size:11px;color:#888;line-height:2;margin-top:10px}
+  .factuur-label{font-family:'Cormorant Garamond',serif;font-size:38px;font-weight:300;letter-spacing:4px;color:#2a1f1f;text-align:right}
+  .factuur-meta{font-size:11px;color:#888;line-height:2;text-align:right;margin-top:8px}
+  .factuur-meta strong{color:#2a1f1f}
+  .roze-balk{height:2px;background:linear-gradient(90deg,#e8d5d0,#c4938a,#e8d5d0);margin:0 0 28px}
+  .klant-blok{background:#fdf8f7;border-left:3px solid #c4938a;padding:14px 18px;margin-bottom:28px}
+  .klant-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#c4938a;margin-bottom:4px}
+  .klant-naam{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400}
+  table{width:100%;border-collapse:collapse;margin-bottom:24px}
+  thead tr{border-bottom:2px solid #e8d5d0}
+  th{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#c4938a;padding:10px 12px;text-align:left;font-weight:500}
+  td{padding:14px 12px;border-bottom:1px solid #f5eeec;font-size:13px}
+  .totalen{margin-left:auto;width:260px}
+  .totaal-rij{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#888}
+  .totaal-rij.main{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:#2a1f1f;border-top:1px solid #e8d5d0;padding-top:12px;margin-top:6px}
+  .betaling{margin-top:36px;padding:18px 20px;background:#fdf8f7;border:1px solid #e8d5d0;border-radius:4px;font-size:12px;line-height:2}
+  .betaling-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#c4938a;margin-bottom:8px}
+  .footer{margin-top:36px;text-align:center;font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:#c4938a;border-top:1px solid #e8d5d0;padding-top:20px}
+  @media print{body{padding:30px}}
+  </style></head><body>
+  <div class="header">
+    <div>${logoHtml}<div class="salon-info">${[s?.adres,`${s?.postcode||""} ${s?.stad||""}`.trim(),s?.kvk?`KVK ${s.kvk}`:"",s?.btwNummer?`BTW ${s.btwNummer}`:"",s?.email,s?.telefoon].filter(Boolean).join("<br>")}</div></div>
+    <div><div class="factuur-label">FACTUUR</div><div class="factuur-meta">Nr. <strong>${factuur.nr}</strong><br>Datum <strong>${fmtDate(factuur.datum)}</strong><br>Vervaldatum <strong>${fmtDate(factuur.vervalDatum)}</strong></div></div>
+  </div>
+  <div class="roze-balk"></div>
+  ${factuur.klant ? `<div class="klant-blok"><div class="klant-label">Factuur aan</div><div class="klant-naam">${factuur.klant}</div></div>` : ""}
+  <table>
+    <thead><tr><th>Omschrijving</th><th style="text-align:right">Excl. BTW</th><th style="text-align:right">BTW 21%</th><th style="text-align:right">Incl. BTW</th></tr></thead>
+    <tbody><tr>
+      <td style="font-size:14px">${factuur.behandeling}</td>
+      <td style="text-align:right">${fmt(factuur.exclBtw||0)}</td>
+      <td style="text-align:right">${fmt(factuur.btw||0)}</td>
+      <td style="text-align:right;font-weight:500">${fmt(factuur.prijs||0)}</td>
+    </tr></tbody>
+  </table>
+  <div class="totalen">
+    <div class="totaal-rij"><span>Subtotaal excl. BTW</span><span>${fmt(factuur.exclBtw||0)}</span></div>
+    <div class="totaal-rij"><span>BTW 21%</span><span>${fmt(factuur.btw||0)}</span></div>
+    <div class="totaal-rij main"><span>Totaal</span><span>${fmt(factuur.prijs||0)}</span></div>
+  </div>
+  <div class="betaling">
+    <div class="betaling-label">Betalingsinformatie</div>
+    ${s?.iban ? `IBAN <strong>${s.iban}</strong> t.n.v. <strong>${s.naam||"Gewoon bij Isolde"}</strong><br>` : ""}
+    o.v.v. factuurnummer <strong>${factuur.nr}</strong> — betaling voor <strong>${fmtDate(factuur.vervalDatum)}</strong>
+    ${factuur.betaalwijze && factuur.betaalwijze !== "Overschrijving" ? `<br><em style="color:#888">Reeds voldaan via ${factuur.betaalwijze}</em>` : ""}
+    ${factuur.opmerkingen ? `<br><br>${factuur.opmerkingen}` : ""}
+  </div>
+  <div class="footer">Bedankt voor uw vertrouwen — ${s?.naam||"Gewoon bij Isolde"} ${s?.tagline ? `· ${s.tagline}` : ""}</div>
+  </body></html>`;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FACTUREN
+// ════════════════════════════════════════════════════════════════════════════
+const FACTUUR_STATUS = ["concept","verzonden","betaald","vervallen"];
+const FACTUUR_STATUS_KLEUR = { concept: "#888", verzonden: "#6366f1", betaald: "#22c55e", vervallen: "#f87171" };
+
+function Facturen({ facturen, salonInst, onDelete, onEdit, onDownload }) {
+  const [confirmId, setConfirmId] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({});
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const openEdit = (f) => { setEditItem(f); setForm({ ...f }); setModal(true); };
+  const submitEdit = () => { onEdit({ ...editItem, ...form }); setModal(false); setEditItem(null); };
+
+  const gesorteerd = [...facturen].sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+  const totaalBedrag = facturen.reduce((s, f) => s + (f.prijs || 0), 0);
+  const betaald = facturen.filter(f => f.status === "betaald").reduce((s, f) => s + (f.prijs || 0), 0);
+  const openstaand = facturen.filter(f => f.status === "verzonden").reduce((s, f) => s + (f.prijs || 0), 0);
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        {[
+          ["Totaal", totaalBedrag, C.purple],
+          ["Betaald", betaald, C.green],
+          ["Openstaand", openstaand, "#6366f1"],
+        ].map(([l, v, c]) => (
+          <div key={l} style={{ background: `${c}18`, border: `1px solid ${c}30`, borderRadius: 14, padding: "12px 10px", textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: c, fontWeight: 700, marginBottom: 3 }}>{l}</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#fff" }}>{fmt(v)}</div>
+          </div>
+        ))}
+      </div>
+
+      {gesorteerd.length === 0
+        ? <EmptyState icon="🧾" text="Nog geen facturen aangemaakt — klik op 🧾 bij een inkomen" />
+        : gesorteerd.map(f => (
+          <Card key={f.id}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{f.nr}</span>
+                  <Badge color={FACTUUR_STATUS_KLEUR[f.status] || "#888"}>{f.status}</Badge>
+                  {f.nasPad && <Badge color={C.green}>💾 NAS</Badge>}
+                </div>
+                {f.klant && <div style={{ fontSize: 13, color: "#e2d0f8", marginBottom: 2 }}>{f.klant}</div>}
+                <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(f.datum)}{f.behandeling ? ` · ${f.behandeling}` : ""}</div>
+                {f.opmerkingen && <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic", marginTop: 4 }}>{f.opmerkingen}</div>}
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 10 }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.green, marginBottom: 4 }}>{fmt(f.prijs)}</div>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => onDownload(f)} title="Download/print"
+                    style={{ background: "none", border: "none", color: "rgba(99,168,233,0.7)", cursor: "pointer", fontSize: 15 }}>⬇️</button>
+                  <button onClick={() => openEdit(f)}
+                    style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
+                  <button onClick={() => setConfirmId(f.id)}
+                    style={{ background: "none", border: "none", color: "rgba(248,113,113,0.5)", cursor: "pointer", fontSize: 15 }}>🗑</button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))
+      }
+
+      <ConfirmDialog open={!!confirmId} message="Deze factuur wordt permanent verwijderd."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => { onDelete(confirmId); setConfirmId(null); }} />
+
+      <Modal open={modal} onClose={() => { setModal(false); setEditItem(null); }} title="Factuur bewerken">
+        <Input label="Factuurnummer" value={form.nr || ""} onChange={e => sf("nr", e.target.value)} />
+        <Input label="Datum" type="date" value={form.datum || ""} onChange={e => sf("datum", e.target.value)} />
+        <Input label="Vervaldatum" type="date" value={form.vervalDatum || ""} onChange={e => sf("vervalDatum", e.target.value)} />
+        <Input label="Klant" value={form.klant || ""} onChange={e => sf("klant", e.target.value)} />
+        <Input label="Behandeling / omschrijving" value={form.behandeling || ""} onChange={e => sf("behandeling", e.target.value)} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}><Input label="Excl. BTW (€)" type="number" step="0.01" value={form.exclBtw || ""} onChange={e => sf("exclBtw", parseFloat(e.target.value) || 0)} /></div>
+          <div style={{ flex: 1 }}><Input label="BTW (€)" type="number" step="0.01" value={form.btw || ""} onChange={e => sf("btw", parseFloat(e.target.value) || 0)} /></div>
+          <div style={{ flex: 1 }}><Input label="Incl. BTW (€)" type="number" step="0.01" value={form.prijs || ""} onChange={e => sf("prijs", parseFloat(e.target.value) || 0)} /></div>
+        </div>
+        <Select label="Status" value={form.status || "verzonden"} onChange={e => sf("status", e.target.value)}
+          options={FACTUUR_STATUS.map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))} />
+        <Textarea label="Opmerkingen" value={form.opmerkingen || ""} onChange={e => sf("opmerkingen", e.target.value)} />
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <Btn onClick={submitEdit} fullWidth>Opslaan</Btn>
+          <Btn variant="secondary" onClick={() => onDownload({ ...editItem, ...form })}>⬇️ Download</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ── Salon Instellingen (voor facturen) ───────────────────────────────────────
 function SalonInstellingen({ inst, onUpdate }) {
   const [bewerken, setBewerken] = useState(false);
@@ -2175,6 +2339,7 @@ export default function App() {
   const [kleuren, setKleuren] = useState([]);
   const [afspraken, setAfspraken] = useState([]);
   const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
+  const [facturen, setFacturen] = useState([]);
   const [salonInst, setSalonInst] = useState({
     naam: "Gewoon bij Isolde", adres: "", postcode: "", stad: "",
     kvk: "", btwNummer: "", iban: "", betalingstermijn: "14",
@@ -2198,6 +2363,7 @@ export default function App() {
       if (db.afspraken) setAfspraken(db.afspraken);
       if (db.nucConfig) { setNucConfigState(db.nucConfig); setNucConfig(db.nucConfig); }
       if (db.salonInst) setSalonInst(s => ({ ...s, ...db.salonInst }));
+      if (db.facturen) setFacturen(db.facturen);
       setLoading(false);
     })();
 
@@ -2213,6 +2379,7 @@ export default function App() {
       if (nieuweData.afspraken) setAfspraken(nieuweData.afspraken);
       if (nieuweData.nucConfig) { setNucConfigState(nieuweData.nucConfig); setNucConfig(nieuweData.nucConfig); }
       if (nieuweData.salonInst) setSalonInst(s => ({ ...s, ...nieuweData.salonInst }));
+      if (nieuweData.facturen) setFacturen(nieuweData.facturen);
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -2347,6 +2514,25 @@ export default function App() {
     showToast("✓ Saloninstellingen opgeslagen");
   };
 
+  const addFactuur = async (f) => {
+    const updated = [...facturen, f];
+    setFacturen(updated); await persist({ facturen: updated });
+  };
+  const editFactuurHandler = async (f) => {
+    const updated = facturen.map(x => x.id === f.id ? f : x);
+    setFacturen(updated); await persist({ facturen: updated }); showToast("✓ Factuur bijgewerkt");
+  };
+  const deleteFactuurHandler = async (id) => {
+    const updated = facturen.filter(x => x.id !== id);
+    setFacturen(updated); await persist({ facturen: updated }); showToast("Factuur verwijderd");
+  };
+  const downloadFactuur = (f) => {
+    const html = genereerFactuurHtml(f, salonInst);
+    const win = window.open("", "_blank", "width=820,height=1000");
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => win.print(), 500);
+  };
+
   const genereerFactuurNr = async () => {
     const nr = salonInst.volgendFactuurnr || 1;
     const jaar = new Date().getFullYear();
@@ -2377,63 +2563,49 @@ export default function App() {
     const s = salonInst;
     const verval = new Date(item.datum);
     verval.setDate(verval.getDate() + parseInt(s.betalingstermijn || 14));
-    const logoHtml = s.logoBase64
-      ? `<img src="${s.logoBase64}" style="max-height:80px;max-width:240px;object-fit:contain;" />`
-      : `<div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:2px;color:#2a1f1f">${s.naam || "Gewoon bij Isolde"}</div>`;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factuur ${nr}</title><style>
-    ${brandCss}
-    body { padding:48px; max-width:800px; margin:0 auto; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:28px; margin-bottom:32px; border-bottom:1px solid #e8d5d0; }
-    .salon-info { font-size:11px; color:#888; line-height:2; margin-top:10px; }
-    .factuur-label { font-family:'Cormorant Garamond',serif; font-size:38px; font-weight:300; letter-spacing:4px; color:#2a1f1f; text-align:right; }
-    .factuur-meta { font-size:11px; color:#888; line-height:2; text-align:right; margin-top:8px; }
-    .factuur-meta strong { color:#2a1f1f; }
-    .roze-balk { height:2px; background:linear-gradient(90deg,#e8d5d0,#c4938a,#e8d5d0); margin:0 0 28px; }
-    .klant-blok { background:#fdf8f7; border-left:3px solid #c4938a; padding:14px 18px; margin-bottom:28px; }
-    .klant-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:#c4938a; margin-bottom:4px; }
-    .klant-naam { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:400; }
-    table { width:100%; border-collapse:collapse; margin-bottom:24px; }
-    thead tr { border-bottom:2px solid #e8d5d0; }
-    th { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:#c4938a; padding:10px 12px; text-align:left; font-weight:500; }
-    td { padding:14px 12px; border-bottom:1px solid #f5eeec; font-size:13px; }
-    .totalen { margin-left:auto; width:260px; }
-    .totaal-rij { display:flex; justify-content:space-between; padding:5px 0; font-size:12px; color:#888; }
-    .totaal-rij.main { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:600; color:#2a1f1f; border-top:1px solid #e8d5d0; padding-top:12px; margin-top:6px; }
-    .betaling { margin-top:36px; padding:18px 20px; background:#fdf8f7; border:1px solid #e8d5d0; border-radius:4px; font-size:12px; line-height:2; }
-    .betaling-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:#c4938a; margin-bottom:8px; }
-    .footer { margin-top:36px; text-align:center; font-family:'Cormorant Garamond',serif; font-size:14px; font-style:italic; color:#c4938a; border-top:1px solid #e8d5d0; padding-top:20px; }
-    @media print { body { padding:30px; } }
-    </style></head><body>
-    <div class="header">
-      <div>${logoHtml}<div class="salon-info">${[s.adres,`${s.postcode||""} ${s.stad||""}`.trim(),s.kvk?`KVK ${s.kvk}`:"",s.btwNummer?`BTW ${s.btwNummer}`:"",s.email,s.telefoon].filter(Boolean).join("<br>")}</div></div>
-      <div><div class="factuur-label">FACTUUR</div><div class="factuur-meta">Nr. <strong>${nr}</strong><br>Datum <strong>${fmtDate(item.datum)}</strong><br>Vervaldatum <strong>${fmtDate(verval.toISOString().slice(0,10))}</strong></div></div>
-    </div>
-    <div class="roze-balk"></div>
-    ${item.klant ? `<div class="klant-blok"><div class="klant-label">Factuur aan</div><div class="klant-naam">${item.klant}</div></div>` : ""}
-    <table>
-      <thead><tr><th>Omschrijving</th><th style="text-align:right">Excl. BTW</th><th style="text-align:right">BTW 21%</th><th style="text-align:right">Incl. BTW</th></tr></thead>
-      <tbody><tr>
-        <td style="font-size:14px">${item.behandeling}</td>
-        <td style="text-align:right">${fmt(item.exclBtw||0)}</td>
-        <td style="text-align:right">${fmt(item.btw||0)}</td>
-        <td style="text-align:right;font-weight:500">${fmt(item.prijs||0)}</td>
-      </tr></tbody>
-    </table>
-    <div class="totalen">
-      <div class="totaal-rij"><span>Subtotaal excl. BTW</span><span>${fmt(item.exclBtw||0)}</span></div>
-      <div class="totaal-rij"><span>BTW 21%</span><span>${fmt(item.btw||0)}</span></div>
-      <div class="totaal-rij main"><span>Totaal</span><span>${fmt(item.prijs||0)}</span></div>
-    </div>
-    <div class="betaling">
-      <div class="betaling-label">Betalingsinformatie</div>
-      ${s.iban ? `IBAN <strong>${s.iban}</strong> t.n.v. <strong>${s.naam||"Gewoon bij Isolde"}</strong><br>` : ""}
-      o.v.v. factuurnummer <strong>${nr}</strong> — betaling voor <strong>${fmtDate(verval.toISOString().slice(0,10))}</strong>
-      ${item.betaalwijze && item.betaalwijze !== "Overschrijving" ? `<br><em style="color:#888">Reeds voldaan via ${item.betaalwijze}</em>` : ""}
-    </div>
-    <div class="footer">Bedankt voor uw vertrouwen — ${s.naam||"Gewoon bij Isolde"} ${s.tagline ? `· ${s.tagline}` : ""}</div>
-    </body></html>`;
-    openPrintVenster(html);
+    // Factuur data object
+    const factuurObj = {
+      id: uid(), nr,
+      datum: item.datum,
+      vervalDatum: verval.toISOString().slice(0, 10),
+      klant: item.klant || "",
+      behandeling: item.behandeling || "",
+      exclBtw: item.exclBtw || 0,
+      btw: item.btw || 0,
+      prijs: item.prijs || 0,
+      betaalwijze: item.betaalwijze || "",
+      status: (item.betaalwijze && item.betaalwijze !== "Overschrijving") ? "betaald" : "verzonden",
+      inkomstId: item.id,
+      nasPad: null,
+      opmerkingen: "",
+    };
+
+    // HTML genereren
+    const html = genereerFactuurHtml(factuurObj, s);
+
+    // Opslaan in lijst
+    await addFactuur(factuurObj);
+
+    // Upload naar NAS (op de achtergrond, niet blokkerend)
+    try {
+      const { serverUrl, apiKey } = getNucConfig();
+      if (serverUrl && apiKey) {
+        const bestand = new File([html], `${nr}_${(item.klant||"factuur").replace(/\s+/g,"-")}.html`, { type: "text/html" });
+        const pad = await uploadNaarNAS(bestand, "factuur", item.datum, 0, item.klant, nr);
+        if (pad) {
+          const bijgewerkt = { ...factuurObj, nasPad: pad };
+          const updated = [...facturen, bijgewerkt].map(x => x.id === bijgewerkt.id ? bijgewerkt : x);
+          setFacturen(updated); await persist({ facturen: updated });
+        }
+      }
+    } catch {}
+
+    // Print
+    const win = window.open("", "_blank", "width=820,height=1000");
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => win.print(), 500);
+    showToast("✓ Factuur aangemaakt en opgeslagen");
   };
 
   const maakVisitekaartje = () => {
@@ -2443,7 +2615,7 @@ export default function App() {
       : `<div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;letter-spacing:3px;color:#2a1f1f">${s.naam||"Gewoon bij Isolde"}</div>`;
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Visitekaartje</title><style>
-    ${brandCss}
+    ${BRAND_CSS}
     body { background:#f5f0ee; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
     .kaart { background:#fff; width:360px; border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.12); }
     .kaart-top { background:linear-gradient(135deg,#fdf8f7,#f5eeec); padding:36px 32px 28px; text-align:center; border-bottom:1px solid #e8d5d0; }
@@ -2477,7 +2649,9 @@ export default function App() {
       <button class="deel-btn" onclick="window.print()">🖨️ Afdrukken / Opslaan als PDF</button>
     </div>
     </body></html>`;
-    openPrintVenster(html, 440);
+    const win = window.open("", "_blank", "width=440,height=800");
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => win.print(), 500);
   };
 
   const updateNucConfig = async (config) => {
@@ -2518,6 +2692,7 @@ export default function App() {
     { id: "planning",  icon: "📅", label: "Planning" },
     { id: "relaties",  icon: "👥", label: "Relaties" },
     { id: "kleuren",   icon: "🎨", label: "Kleuren" },
+    { id: "facturen",  icon: "🧾", label: "Facturen" },
     { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -2555,6 +2730,8 @@ export default function App() {
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
                   onVoltooien={voltooiAfspraak} onAddKlant={addKlant} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
+    facturen:  <Facturen facturen={facturen} salonInst={salonInst}
+                  onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
