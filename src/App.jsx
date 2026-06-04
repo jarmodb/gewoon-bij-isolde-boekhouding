@@ -1380,8 +1380,37 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BTW OVERZICHT
+// BTW + INKOMSTENBELASTING OVERZICHT
 // ════════════════════════════════════════════════════════════════════════════
+
+// 2026 belastingschijven Box 1
+const SCHIJVEN_2026 = [
+  { tot: 38883,    tarief: 0.3575 },
+  { tot: 78426,    tarief: 0.3756 },
+  { tot: Infinity, tarief: 0.4950 },
+];
+
+function berekenBoxBelasting(inkomen) {
+  let belasting = 0, rest = Math.max(0, inkomen);
+  let vorigeGrens = 0;
+  for (const { tot, tarief } of SCHIJVEN_2026) {
+    const schijfBreedte = tot - vorigeGrens;
+    const inSchijf = Math.min(rest, schijfBreedte);
+    belasting += inSchijf * tarief;
+    rest -= inSchijf;
+    vorigeGrens = tot;
+    if (rest <= 0) break;
+  }
+  return belasting;
+}
+
+function marginaalTarief(inkomen) {
+  for (const { tot, tarief } of SCHIJVEN_2026) {
+    if (inkomen <= tot) return tarief;
+  }
+  return 0.4950;
+}
+
 const KWARTALEN = [
   { q: "Q1", label: "Kwartaal 1", periode: "Jan – Mrt", maanden: [0,1,2] },
   { q: "Q2", label: "Kwartaal 2", periode: "Apr – Jun", maanden: [3,4,5] },
@@ -1399,6 +1428,19 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
 
   const [jaar, setJaar] = useState(huidigJaar);
   const [openKwartaal, setOpenKwartaal] = useState(null);
+  const [sectie, setSectie] = useState("btw"); // "btw" | "ib"
+
+  // IB instellingen (opgeslagen in localStorage)
+  const [ibInst, setIbInstState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ib_instellingen") || "{}"); } catch { return {}; }
+  });
+  const setIbInst = (v) => {
+    setIbInstState(v);
+    try { localStorage.setItem("ib_instellingen", JSON.stringify(v)); } catch {}
+  };
+  const [editIb, setEditIb] = useState(false);
+  const [ibForm, setIbForm] = useState(ibInst);
+  const ibf = (k, v) => setIbForm(f => ({ ...f, [k]: v }));
 
   const btwVoorPeriode = (maanden) => {
     const ontvangen = inkomsten
@@ -1422,11 +1464,43 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
 
   const totaalJaar = btwVoorPeriode([0,1,2,3,4,5,6,7,8,9,10,11]);
 
+  // IB berekening voor geselecteerd jaar
+  const ibBerekening = (() => {
+    const salaris = parseFloat(ibInst.salaris) || 0;
+    const urenOk = ibInst.urencriterium === "ja";
+    const isStarter = ibInst.starter === "ja";
+
+    const omzet = inkomsten
+      .filter(x => new Date(x.datum).getFullYear() === jaar)
+      .reduce((s, x) => s + (x.exclBtw || 0), 0);
+    const kosten = uitgaven
+      .filter(x => new Date(x.datum).getFullYear() === jaar)
+      .reduce((s, x) => s + (x.bedragExcl || 0), 0);
+    const brutoWinst = omzet - kosten;
+
+    const zelfstandigenaftrek = urenOk ? (jaar >= 2026 ? 1200 : 2470) : 0;
+    const startersaftrek = (urenOk && isStarter) ? 2123 : 0;
+    const winstNaOndAftrek = Math.max(0, brutoWinst - zelfstandigenaftrek - startersaftrek);
+    const mkbVrijstelling = winstNaOndAftrek * 0.127;
+    const belastbareWinst = Math.max(0, winstNaOndAftrek - mkbVrijstelling);
+
+    const totaalBoxInkomen = salaris + belastbareWinst;
+    const belastingTotaal = berekenBoxBelasting(totaalBoxInkomen);
+    const belastingAlleen = berekenBoxBelasting(salaris);
+    const belastingOpWinst = belastingTotaal - belastingAlleen;
+    const margTarief = marginaalTarief(salaris + belastbareWinst / 2);
+    const zvwBijdrage = belastbareWinst * 0.0485;
+
+    return { omzet, kosten, brutoWinst, zelfstandigenaftrek, startersaftrek,
+      winstNaOndAftrek, mkbVrijstelling, belastbareWinst,
+      belastingOpWinst, margTarief, zvwBijdrage, totaalExtra: belastingOpWinst + zvwBijdrage };
+  })();
+
   return (
     <div>
-      {/* Jaar-selector */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>BTW-aangifte</div>
+      {/* Header + jaar-selector */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Belastingen</div>
         <div style={{ display: "flex", gap: 6 }}>
           {jaren.map(j => (
             <button key={j} onClick={() => setJaar(j)} style={{
@@ -1438,6 +1512,118 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
           ))}
         </div>
       </div>
+
+      {/* Sectie toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[["btw","🧾 BTW-aangifte"],["ib","💶 Inkomstenbelasting"]].map(([s, l]) => (
+          <button key={s} onClick={() => setSectie(s)} style={{
+            flex: 1, padding: "10px 0", borderRadius: 12, fontWeight: 700, fontSize: 13,
+            border: "none", cursor: "pointer", fontFamily: "inherit",
+            background: sectie === s ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+            color: sectie === s ? "#fff" : C.muted,
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {sectie === "ib" && (
+        <div>
+          {/* IB Instellingen */}
+          <Card style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editIb ? 12 : 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#818cf8" }}>⚙️ Persoonlijke instellingen</div>
+              <Btn small variant="secondary" onClick={() => { if (editIb) { setIbInst(ibForm); } else { setIbForm(ibInst); } setEditIb(!editIb); }}>
+                {editIb ? "✓ Opslaan" : "✏️"}
+              </Btn>
+            </div>
+            {editIb ? (
+              <>
+                <Input label="Bruto jaarsalaris loondienst (€)" type="number" value={ibForm.salaris || ""}
+                  onChange={e => ibf("salaris", e.target.value)} placeholder="bijv. 35000" />
+                <Select label="Voldoe je aan het urencriterium? (≥1.225 uur/jaar in salon)"
+                  value={ibForm.urencriterium || ""} onChange={e => ibf("urencriterium", e.target.value)}
+                  options={[{value:"ja",label:"Ja (≥1.225 uur)"},{value:"nee",label:"Nee (<1.225 uur)"}]} />
+                <Select label="Ben je starter? (max 5 jaar ondernemer)"
+                  value={ibForm.starter || ""} onChange={e => ibf("starter", e.target.value)}
+                  options={[{value:"ja",label:"Ja"},{value:"nee",label:"Nee"}]} />
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+                Salaris: <span style={{ color: "#fff" }}>{ibInst.salaris ? fmt(ibInst.salaris) : "niet ingevuld"}</span>
+                {" · "}Urencriterium: <span style={{ color: "#fff" }}>{ibInst.urencriterium || "?"}</span>
+                {" · "}Starter: <span style={{ color: "#fff" }}>{ibInst.starter || "?"}</span>
+              </div>
+            )}
+          </Card>
+
+          {/* Winstberekening */}
+          <Card>
+            <SectionTitle>Winstberekening {jaar}</SectionTitle>
+            {[
+              ["Omzet (excl. BTW)", ibBerekening.omzet, C.green],
+              ["Zakelijke kosten (excl. BTW)", -ibBerekening.kosten, C.red],
+              ["= Bruto winst", ibBerekening.brutoWinst, ibBerekening.brutoWinst >= 0 ? "#fff" : C.red],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: C.muted }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color }}>{val < 0 ? `- ${fmt(Math.abs(val))}` : fmt(val)}</span>
+              </div>
+            ))}
+          </Card>
+
+          {/* Aftrekposten */}
+          <Card>
+            <SectionTitle>Ondernemersaftrek {jaar}</SectionTitle>
+            <div style={{ fontSize: 11, color: ibInst.urencriterium === "ja" ? C.green : C.orange, marginBottom: 10, fontWeight: 700 }}>
+              {ibInst.urencriterium === "ja" ? "✓ Urencriterium gehaald" : ibInst.urencriterium === "nee" ? "⚠️ Urencriterium niet gehaald — aftrekken vervallen" : "⚠️ Stel urencriterium in"}
+            </div>
+            {[
+              ["Zelfstandigenaftrek", -ibBerekening.zelfstandigenaftrek, ibBerekening.zelfstandigenaftrek === 0 ? C.muted : null],
+              ibBerekening.startersaftrek > 0 ? ["Startersaftrek ⚡", -ibBerekening.startersaftrek, C.orange] : null,
+              ["MKB-winstvrijstelling (12,7%)", -ibBerekening.mkbVrijstelling, null],
+              ["= Belastbare winst", ibBerekening.belastbareWinst, "#fff"],
+            ].filter(Boolean).map(([label, val, color]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: C.muted }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: color || C.green }}>
+                  {val < 0 ? `- ${fmt(Math.abs(val))}` : fmt(val)}
+                </span>
+              </div>
+            ))}
+            {ibBerekening.startersaftrek > 0 && (
+              <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>
+                ⚡ Startersaftrek verdwijnt per 1 januari 2027!
+              </div>
+            )}
+          </Card>
+
+          {/* Schatting belasting */}
+          <Card style={{ background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.2)" }}>
+            <SectionTitle>Geschatte belasting op ZZP-inkomen</SectionTitle>
+            {!ibInst.salaris && (
+              <div style={{ fontSize: 12, color: C.orange, marginBottom: 10 }}>⚠️ Vul je salaris in voor een nauwkeurige schatting</div>
+            )}
+            {[
+              [`Marginaal tarief Box 1 (${(ibBerekening.margTarief * 100).toFixed(2).replace(".", ",")}%)`, ibBerekening.belastingOpWinst, C.red],
+              ["ZVW-bijdrage (4,85%)", ibBerekening.zvwBijdrage, C.orange],
+            ].map(([label, val]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: C.muted }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.red }}>{fmt(val)}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.1)", marginTop: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Totaal te reserveren</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: C.red }}>{fmt(ibBerekening.totaalExtra)}</span>
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 10, lineHeight: 1.6 }}>
+              Dit is een schatting op basis van 2026-tarieven. Vraag je accountant voor de definitieve aangifte.
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {sectie === "btw" && (
+        <div>
 
       {/* Jaartotaal */}
       <Card style={{
@@ -1519,6 +1705,8 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
       <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>
         ▲ te betalen aan belastingdienst · ▼ teruggave · BTW 21%
       </div>
+      </div>
+      )}
     </div>
   );
 }
