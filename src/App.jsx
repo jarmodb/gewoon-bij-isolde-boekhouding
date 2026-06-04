@@ -1379,6 +1379,150 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// BTW OVERZICHT
+// ════════════════════════════════════════════════════════════════════════════
+const KWARTALEN = [
+  { q: "Q1", label: "Kwartaal 1", periode: "Jan – Mrt", maanden: [0,1,2] },
+  { q: "Q2", label: "Kwartaal 2", periode: "Apr – Jun", maanden: [3,4,5] },
+  { q: "Q3", label: "Kwartaal 3", periode: "Jul – Sep", maanden: [6,7,8] },
+  { q: "Q4", label: "Kwartaal 4", periode: "Okt – Dec", maanden: [9,10,11] },
+];
+
+function BTWOverzicht({ inkomsten, uitgaven }) {
+  const huidigJaar = new Date().getFullYear();
+  const jaren = [...new Set([
+    ...inkomsten.map(x => new Date(x.datum).getFullYear()),
+    ...uitgaven.map(x => new Date(x.datum).getFullYear()),
+    huidigJaar,
+  ])].filter(Boolean).sort((a,b) => b - a);
+
+  const [jaar, setJaar] = useState(huidigJaar);
+  const [openKwartaal, setOpenKwartaal] = useState(null);
+
+  const btwVoorPeriode = (maanden) => {
+    const ontvangen = inkomsten
+      .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+      .reduce((s, x) => s + (x.btw || 0), 0);
+    const betaald = uitgaven
+      .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+      .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
+    return { ontvangen, betaald, teBetalen: ontvangen - betaald };
+  };
+
+  const btwPerMaand = (maand) => {
+    const ontvangen = inkomsten
+      .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && d.getMonth() === maand; })
+      .reduce((s, x) => s + (x.btw || 0), 0);
+    const betaald = uitgaven
+      .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && d.getMonth() === maand; })
+      .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
+    return { ontvangen, betaald, saldo: ontvangen - betaald };
+  };
+
+  const totaalJaar = btwVoorPeriode([0,1,2,3,4,5,6,7,8,9,10,11]);
+
+  return (
+    <div>
+      {/* Jaar-selector */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>BTW-aangifte</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {jaren.map(j => (
+            <button key={j} onClick={() => setJaar(j)} style={{
+              padding: "6px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+              border: "none", cursor: "pointer", fontFamily: "inherit",
+              background: j === jaar ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+              color: j === jaar ? "#fff" : C.muted,
+            }}>{j}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Jaartotaal */}
+      <Card style={{
+        background: totaalJaar.teBetalen > 0 ? "rgba(248,113,113,0.08)" : "rgba(34,197,94,0.08)",
+        border: `1px solid ${totaalJaar.teBetalen > 0 ? "rgba(248,113,113,0.25)" : "rgba(34,197,94,0.25)"}`,
+        marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6 }}>TOTAAL {jaar}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>
+              Ontvangen <span style={{ color: C.green, fontWeight: 700 }}>{fmt(totaalJaar.ontvangen)}</span>
+              {" · "}Betaald <span style={{ color: C.orange, fontWeight: 700 }}>{fmt(totaalJaar.betaald)}</span>
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: C.muted }}>{totaalJaar.teBetalen > 0 ? "Te betalen" : "Teruggave"}</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: totaalJaar.teBetalen > 0 ? C.red : C.green }}>
+              {fmt(Math.abs(totaalJaar.teBetalen))}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Per kwartaal */}
+      {KWARTALEN.map(({ q, label, periode, maanden }) => {
+        const { ontvangen, betaald, teBetalen } = btwVoorPeriode(maanden);
+        const isOpen = openKwartaal === q;
+        return (
+          <Card key={q} style={{ marginBottom: 8 }}>
+            {/* Header kwartaal */}
+            <div onClick={() => setOpenKwartaal(isOpen ? null : q)}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{q}</span>
+                  <span style={{ fontSize: 12, color: C.muted }}>{periode}</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>
+                  Ontvangen <span style={{ color: C.green }}>{fmt(ontvangen)}</span>
+                  {" · "}Betaald <span style={{ color: C.orange }}>{fmt(betaald)}</span>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <Badge color={teBetalen > 0 ? C.red : C.green}>
+                  {teBetalen > 0 ? `▲ ${fmt(teBetalen)}` : `▼ ${fmt(Math.abs(teBetalen))}`}
+                </Badge>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{isOpen ? "▲" : "▼"} details</div>
+              </div>
+            </div>
+
+            {/* Maandbreakdown */}
+            {isOpen && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                {maanden.map(m => {
+                  const { ontvangen: mo, betaald: mb, saldo } = btwPerMaand(m);
+                  return (
+                    <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "8px 0", borderBottom: m !== maanden[2] ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#e2d0f8" }}>{PLAN_MAANDEN[m]}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                          ↑ <span style={{ color: C.green }}>{fmt(mo)}</span>
+                          {" · "}↓ <span style={{ color: C.orange }}>{fmt(mb)}</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: saldo > 0 ? C.red : saldo < 0 ? C.green : C.muted }}>
+                        {saldo === 0 ? "—" : (saldo > 0 ? "+" : "") + fmt(Math.abs(saldo))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+
+      <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>
+        ▲ te betalen aan belastingdienst · ▼ teruggave · BTW 21%
+      </div>
+    </div>
+  );
+}
+
 // ── NUC Upload Instellingen ───────────────────────────────────────────────────
 function NucInstellingen({ config, onUpdate }) {
   const [testStatus, setTestStatus] = useState(null);
@@ -1642,41 +1786,6 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
             </div>
           </div>
         )}
-      </Card>
-
-      {/* BTW kwartaaloverzicht */}
-      <Card>
-        <SectionTitle>BTW-aangifte per kwartaal {new Date().getFullYear()}</SectionTitle>
-        {[["Q1","Jan–Mar",[0,1,2]],["Q2","Apr–Jun",[3,4,5]],["Q3","Jul–Sep",[6,7,8]],["Q4","Okt–Dec",[9,10,11]]].map(([q, label, maanden]) => {
-          const jaar = new Date().getFullYear();
-          const btwOntvangen = inkomsten
-            .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
-            .reduce((s, x) => s + (x.btw || 0), 0);
-          const btwBetaald = uitgaven
-            .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
-            .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-          const teBetalen = btwOntvangen - btwBetaald;
-          return (
-            <div key={q} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{q}</span>
-                  <span style={{ fontSize: 11, color: C.muted, marginLeft: 6 }}>{label}</span>
-                </div>
-                <Badge color={teBetalen > 0 ? C.red : C.green}>
-                  {teBetalen > 0 ? `▲ ${fmt(teBetalen)}` : `▼ ${fmt(Math.abs(teBetalen))}`}
-                </Badge>
-              </div>
-              <div style={{ display: "flex", gap: 16, fontSize: 11, color: C.muted }}>
-                <span>Ontvangen: <span style={{ color: C.green }}>{fmt(btwOntvangen)}</span></span>
-                <span>Betaald: <span style={{ color: C.orange }}>{fmt(btwBetaald)}</span></span>
-              </div>
-            </div>
-          );
-        })}
-        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-          ▲ = nog te betalen aan belastingdienst · ▼ = teruggave
-        </div>
       </Card>
 
       {/* Export */}
@@ -1991,6 +2100,7 @@ export default function App() {
     { id: "planning",  icon: "📅", label: "Planning" },
     { id: "relaties",  icon: "👥", label: "Relaties" },
     { id: "kleuren",   icon: "🎨", label: "Kleuren" },
+    { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
 
@@ -2027,6 +2137,7 @@ export default function App() {
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
                   onVoltooien={voltooiAfspraak} onAddKlant={addKlant} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
+    btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
