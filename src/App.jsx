@@ -1844,6 +1844,91 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// STEMPELKAART
+// ════════════════════════════════════════════════════════════════════════════
+function Stempelkaart({ klanten, onStempel }) {
+  const [zoek, setZoek] = useState("");
+  const metKaart = klanten.filter(k => (k.stempelDoel || 0) > 0);
+  const gefilterd = metKaart.filter(k =>
+    !zoek || `${k.voornaam} ${k.achternaam}`.toLowerCase().includes(zoek.toLowerCase())
+  ).sort((a, b) => {
+    // Klanten die doel bereikt hebben bovenaan
+    const aVol = (a.stempels || 0) >= (a.stempelDoel || 10);
+    const bVol = (b.stempels || 0) >= (b.stempelDoel || 10);
+    if (aVol !== bVol) return aVol ? -1 : 1;
+    return `${a.voornaam} ${a.achternaam}`.localeCompare(`${b.voornaam} ${b.achternaam}`);
+  });
+
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: "#fff", marginBottom: 16 }}>Stempelkaarten</div>
+
+      {metKaart.length === 0 ? (
+        <EmptyState icon="💳" text="Nog geen klanten met een stempelkaart — stel het in via Relaties → klant bewerken" />
+      ) : (
+        <>
+          <SearchBar value={zoek} onChange={setZoek} placeholder="Zoek klant..." />
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+            {metKaart.filter(k => (k.stempels||0) >= (k.stempelDoel||10)).length} behaald · {metKaart.length} actief
+          </div>
+          {gefilterd.map(k => {
+            const stempels = k.stempels || 0;
+            const doel = k.stempelDoel || 10;
+            const vol = stempels >= doel;
+            const pct = Math.min(100, Math.round(stempels / doel * 100));
+            return (
+              <Card key={k.id} style={vol ? { border: `1px solid ${C.orange}40`, background: "rgba(251,146,60,0.06)" } : {}}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{k.voornaam} {k.achternaam}</div>
+                    {k.stempelBeloning && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>🎁 {k.stempelBeloning}</div>}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: vol ? C.orange : C.purple }}>{stempels}/{doel}</div>
+                    {vol && <div style={{ fontSize: 11, color: C.orange, fontWeight: 700 }}>🎉 Behaald!</div>}
+                  </div>
+                </div>
+
+                {/* Visuele stempels */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                  {Array.from({ length: doel }, (_, i) => (
+                    <span key={i} style={{ fontSize: doel > 15 ? 14 : 18, opacity: i < stempels ? 1 : 0.15,
+                      filter: i < stempels ? "none" : "grayscale(1)" }}>💅</span>
+                  ))}
+                </div>
+
+                {/* Progressiebalk */}
+                <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, marginBottom: 10 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, borderRadius: 2,
+                    background: vol ? `linear-gradient(90deg,${C.orange},#f59e0b)` : `linear-gradient(90deg,${C.pink},${C.purple})`,
+                    transition: "width 0.3s" }} />
+                </div>
+
+                {/* Acties */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!vol && (
+                    <Btn small onClick={() => onStempel(k, 1)}>+ Stempel geven</Btn>
+                  )}
+                  {vol && (
+                    <Btn small variant="secondary" onClick={() => onStempel(k, -stempels)}
+                      style={{ borderColor: `${C.orange}50`, color: C.orange }}>
+                      ✓ Beloning verzilverd — reset
+                    </Btn>
+                  )}
+                  {stempels > 0 && !vol && (
+                    <Btn small variant="ghost" onClick={() => onStempel(k, -1)}>− Verwijder stempel</Btn>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Brand CSS + Factuur HTML generator (module-niveau) ───────────────────────
 const BRAND_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap');
@@ -2845,6 +2930,7 @@ export default function App() {
     { id: "relaties",  icon: "👥", label: "Relaties" },
     { id: "kleuren",   icon: "🎨", label: "Kleuren" },
     { id: "facturen",  icon: "🧾", label: "Facturen" },
+    { id: "stempels",  icon: "💳", label: "Stempels" },
     { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -2887,6 +2973,7 @@ export default function App() {
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
     facturen:  <Facturen facturen={facturen} salonInst={salonInst}
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
+    stempels:  <Stempelkaart klanten={klanten} onStempel={geefStempel} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
@@ -2903,7 +2990,7 @@ export default function App() {
         @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar { width: 4px; height: 0; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
         @media print {
           body * { visibility: hidden !important; }
@@ -2986,10 +3073,11 @@ export default function App() {
             background: "rgba(13,0,32,0.96)", backdropFilter: "blur(24px)",
             borderTop: "1px solid rgba(255,255,255,0.07)",
             display: "flex", paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            overflowX: "auto", scrollbarWidth: "none",
           }}>
             {TABS.map(t => (
               <button key={t.id} onClick={() => goToTab(t.id)} style={{
-                flex: 1, background: "none", border: "none", cursor: "pointer",
+                flex: "0 0 auto", minWidth: 62, background: "none", border: "none", cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
                 padding: "10px 0 8px", fontFamily: "inherit",
               }}>
