@@ -2540,10 +2540,15 @@ export default function App() {
   };
 
   const genereerFactuurNr = async () => {
-    const nr = salonInst.volgendFactuurnr || 1;
     const jaar = new Date().getFullYear();
-    const label = `F${jaar}-${String(nr).padStart(3, "0")}`;
-    const bijgewerkt = { ...salonInst, volgendFactuurnr: nr + 1 };
+    // Altijd verder na het hoogste bestaande nummer (ook na verwijderen)
+    const hoogste = facturen
+      .filter(f => f.nr?.startsWith(`F${jaar}-`))
+      .map(f => parseInt(f.nr.split("-")[1]) || 0)
+      .reduce((max, n) => Math.max(max, n), 0);
+    const volgend = Math.max(salonInst.volgendFactuurnr || 1, hoogste + 1);
+    const label = `F${jaar}-${String(volgend).padStart(3, "0")}`;
+    const bijgewerkt = { ...salonInst, volgendFactuurnr: volgend + 1 };
     setSalonInst(bijgewerkt);
     await persist({ salonInst: bijgewerkt });
     return label;
@@ -2553,15 +2558,6 @@ export default function App() {
     const win = window.open("", "_blank", `width=${breedte},height=1000`);
     win.document.write(html); win.document.close(); win.focus();
   };
-
-  const brandCss = `
-    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@300;400;500&display=swap');
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Montserrat',sans-serif; background:#fff; color:#2a1f1f; }
-    .serif { font-family:'Cormorant Garamond',serif; }
-    .rose { color:#c4938a; }
-    .muted { color:#888; }
-  `;
 
   const maakFactuur = async (item) => {
     const nr = await genereerFactuurNr();
@@ -2592,14 +2588,23 @@ export default function App() {
     // Opslaan in lijst
     await addFactuur(factuurObj);
 
-    // Upload naar NAS (op de achtergrond, niet blokkerend)
+    // Upload naar NAS in aparte facturen/ map (op de achtergrond)
     try {
       const { serverUrl, apiKey } = getNucConfig();
       if (serverUrl && apiKey) {
-        const bestand = new File([html], `${nr}_${(item.klant||"factuur").replace(/\s+/g,"-")}.html`, { type: "text/html" });
-        const pad = await uploadNaarNAS(bestand, "factuur", item.datum, 0, item.klant, nr);
-        if (pad) {
-          const bijgewerkt = { ...factuurObj, nasPad: pad };
+        const jaar = item.datum.slice(0, 4);
+        const maand = item.datum.slice(5, 7);
+        const bestandsnaam = `${nr}_${(item.klant||"factuur").replace(/[^a-zA-Z0-9]/g,"-")}.html`;
+        const formData = new FormData();
+        formData.append("pad", `facturen/${jaar}/${maand}`);
+        formData.append("bestandsnaam", bestandsnaam);
+        formData.append("bestand", new File([html], bestandsnaam, { type: "text/html" }));
+        const res = await fetch(`${serverUrl.replace(/\/$/, "")}/upload`, {
+          method: "POST", headers: { "x-api-key": apiKey }, body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const bijgewerkt = { ...factuurObj, nasPad: data.pad };
           const updated = [...facturen, bijgewerkt].map(x => x.id === bijgewerkt.id ? bijgewerkt : x);
           setFacturen(updated); await persist({ facturen: updated });
         }
