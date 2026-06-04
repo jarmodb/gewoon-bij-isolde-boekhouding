@@ -1289,12 +1289,15 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
       ${printAfspraken.length === 0 ? '<p>Geen afspraken in deze periode.</p>' :
         `<table><thead><tr>${["Datum","Tijd","Duur","Klant","Behandeling","Prijs","Status","Notities"]
           .map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rijen}</tbody></table>`}
+      <div style="text-align:center;margin-top:24px" class="no-print">
+        <button onclick="window.print()" style="background:#a855f7;color:#fff;border:none;padding:10px 28px;border-radius:20px;font-size:13px;cursor:pointer">🖨️ Afdrukken / Opslaan als PDF</button>
+      </div>
+      <style>@media print{.no-print{display:none}}</style>
       </body></html>`;
     const win = window.open('', '_blank', 'width=900,height=600');
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); }, 250);
   };
 
   return (
@@ -1779,6 +1782,10 @@ function genereerFactuurHtml(factuur, s) {
     ${factuur.opmerkingen ? `<br><br>${factuur.opmerkingen}` : ""}
   </div>
   <div class="footer">Bedankt voor uw vertrouwen — ${s?.naam||"Gewoon bij Isolde"} ${s?.tagline ? `· ${s.tagline}` : ""}</div>
+  <div style="text-align:center;margin-top:32px;padding-top:20px" class="no-print">
+    <button onclick="window.print()" style="background:linear-gradient(135deg,#c4938a,#a87a72);color:#fff;border:none;padding:12px 32px;border-radius:24px;font-size:14px;cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.5px">🖨️ Afdrukken / Opslaan als PDF</button>
+  </div>
+  <style>.no-print { } @media print { .no-print { display:none; } }</style>
   </body></html>`;
 }
 
@@ -2530,7 +2537,6 @@ export default function App() {
     const html = genereerFactuurHtml(f, salonInst);
     const win = window.open("", "_blank", "width=820,height=1000");
     win.document.write(html); win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
   };
 
   const genereerFactuurNr = async () => {
@@ -2546,7 +2552,6 @@ export default function App() {
   const openPrintVenster = (html, breedte = 820) => {
     const win = window.open("", "_blank", `width=${breedte},height=1000`);
     win.document.write(html); win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
   };
 
   const brandCss = `
@@ -2604,7 +2609,6 @@ export default function App() {
     // Print
     const win = window.open("", "_blank", "width=820,height=1000");
     win.document.write(html); win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
     showToast("✓ Factuur aangemaakt en opgeslagen");
   };
 
@@ -2651,7 +2655,6 @@ export default function App() {
     </body></html>`;
     const win = window.open("", "_blank", "width=440,height=800");
     win.document.write(html); win.document.close(); win.focus();
-    setTimeout(() => win.print(), 500);
   };
 
   const updateNucConfig = async (config) => {
