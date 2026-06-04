@@ -13,6 +13,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import puppeteer from "puppeteer";
 
 dotenv.config();
 
@@ -90,6 +91,39 @@ app.post("/upload", upload.single("bestand"), (req, res) => {
   const relativePad = path.join(req.body.pad || "", req.file.filename).replace(/\\/g, "/");
   console.log(`✓ Opgeslagen: ${relativePad}`);
   res.json({ pad: relativePad, ok: true });
+});
+
+// HTML → PDF converteren en opslaan op NAS
+app.post("/html-to-pdf", express.json({ limit: "8mb" }), async (req, res) => {
+  const { html, pad, bestandsnaam } = req.body;
+  if (!html || !pad || !bestandsnaam) return res.status(400).json({ error: "Ontbrekende velden" });
+
+  const volledigeMap = path.join(UPLOAD_MAP, pad);
+  try { fs.mkdirSync(volledigeMap, { recursive: true }); } catch {}
+  const volledigPad = path.join(volledigeMap, bestandsnaam);
+
+  try {
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 15000 });
+    await page.pdf({
+      path: volledigPad,
+      format: "A4",
+      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
+      printBackground: true,
+    });
+    await browser.close();
+
+    const relativePad = path.join(pad, bestandsnaam).replace(/\\/g, "/");
+    console.log(`✓ PDF opgeslagen: ${relativePad}`);
+    res.json({ pad: relativePad, ok: true });
+  } catch (e) {
+    console.error("PDF generatie mislukt:", e.message);
+    res.status(500).json({ error: "PDF generatie mislukt: " + e.message });
+  }
 });
 
 // Bestand opvragen (voor inzage bon)

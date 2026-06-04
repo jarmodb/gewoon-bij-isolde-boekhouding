@@ -2591,19 +2591,17 @@ export default function App() {
     // HTML genereren
     const html = genereerFactuurHtml(factuurObj, s);
 
-    // NAS upload in aparte facturen/ map
+    // NAS: HTML → PDF via Puppeteer op de NUC
     try {
       const { serverUrl, apiKey } = nucConfig || getNucConfig();
       if (serverUrl && apiKey) {
         const jaar = item.datum.slice(0, 4);
         const maand = item.datum.slice(5, 7);
-        const bestandsnaam = `${nr}_${(item.klant||"factuur").replace(/[^a-zA-Z0-9]/g,"-")}.html`;
-        const formData = new FormData();
-        formData.append("pad", `facturen/${jaar}/${maand}`);
-        formData.append("bestandsnaam", bestandsnaam);
-        formData.append("bestand", new File([html], bestandsnaam, { type: "text/html" }));
-        const res = await fetch(`${serverUrl.replace(/\/$/, "")}/upload`, {
-          method: "POST", headers: { "x-api-key": apiKey }, body: formData,
+        const bestandsnaam = `${nr}_${(item.klant||"factuur").replace(/[^a-zA-Z0-9]/g,"-")}.pdf`;
+        const res = await fetch(`${serverUrl.replace(/\/$/, "")}/html-to-pdf`, {
+          method: "POST",
+          headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ html, pad: `facturen/${jaar}/${maand}`, bestandsnaam }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -2614,7 +2612,7 @@ export default function App() {
           await persist({ facturen: lijst2 });
         }
       }
-    } catch (e) { console.warn("NAS upload factuur:", e); }
+    } catch (e) { console.warn("NAS PDF factuur:", e); }
 
     const win = window.open("", "_blank", "width=820,height=1000");
     win.document.write(html); win.document.close(); win.focus();
