@@ -1182,6 +1182,9 @@ function KleurenArchief({ data, onAdd, onDelete, onEdit }) {
   // Unieke merken uit bestaande data als suggesties
   const bekendeMerken = [...new Set(data.map(d => d.merk).filter(Boolean))].sort();
 
+  // Vaste types + aangepaste types uit bestaande data
+  const bekendeTypes = [...new Set([...KLEUR_TYPES, ...data.map(d => d.type).filter(Boolean)])].sort();
+
   const openEdit = (item) => {
     setEditItem(item);
     setForm({ merk: item.merk || "", kleurnaam: item.kleurnaam || "",
@@ -1315,7 +1318,20 @@ function KleurenArchief({ data, onAdd, onDelete, onEdit }) {
         <MerkInput value={form.merk} onChange={v => set("merk", v)} bekendeMerken={bekendeMerken} />
         <Input label="Kleurnaam *" value={form.kleurnaam} onChange={e => set("kleurnaam", e.target.value)} placeholder="Bijv. Bubble Bath" />
         <Input label="Kleurnummer" value={form.kleurnummer} onChange={e => set("kleurnummer", e.target.value)} placeholder="Bijv. NL 56" />
-        <Select label="Type" value={form.type} onChange={e => set("type", e.target.value)} options={KLEUR_TYPES} />
+        <Field label="Type">
+          <input
+            list="type-suggesties"
+            value={form.type}
+            onChange={e => set("type", e.target.value)}
+            placeholder="Typ of kies een type..."
+            style={{ ...inputStyle }}
+            onFocus={e => e.target.style.borderColor = C.pink}
+            onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+          />
+          <datalist id="type-suggesties">
+            {bekendeTypes.map(t => <option key={t} value={t} />)}
+          </datalist>
+        </Field>
         <Input label="Aankoopdatum" type="date" value={form.aankoopdatum} onChange={e => set("aankoopdatum", e.target.value)} />
         <Input label="Prijs (€)" type="number" step="0.01" min="0" value={form.prijs} onChange={e => set("prijs", e.target.value)} placeholder="0.00" />
         <Input label="Link (webshop)" type="url" value={form.link} onChange={e => set("link", e.target.value)} placeholder="https://..." />
