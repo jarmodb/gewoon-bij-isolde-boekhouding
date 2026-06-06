@@ -2957,6 +2957,137 @@ function TodoLijst({ todos, onAdd, onToggle, onDelete, onEdit }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// BESTELLIJST
+// ════════════════════════════════════════════════════════════════════════════
+function Bestellijst({ items, onAdd, onToggle, onDelete, onEdit }) {
+  const LEEG = { naam: "", link: "", prijs: "", notitie: "" };
+  const [form, setForm]       = useState(LEEG);
+  const [modal, setModal]     = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [filter, setFilter]   = useState("open"); // "open" | "besteld" | "alles"
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const openNieuw = () => { setEditItem(null); setForm(LEEG); setModal(true); };
+  const openEdit  = (item) => { setEditItem(item); setForm({ naam: item.naam, link: item.link || "", prijs: item.prijs || "", notitie: item.notitie || "" }); setModal(true); };
+
+  const submit = () => {
+    const naam = form.naam.trim();
+    if (!naam) return;
+    const data = { naam, link: form.link.trim(), prijs: parseFloat(form.prijs) || 0, notitie: form.notitie.trim() };
+    if (editItem) onEdit(editItem.id, data);
+    else onAdd(data);
+    setModal(false);
+  };
+
+  const gefilterdeItems = (items || []).filter(x => {
+    if (filter === "open")    return !x.besteld;
+    if (filter === "besteld") return  x.besteld;
+    return true;
+  }).sort((a, b) => (b.aangemaakt || "").localeCompare(a.aangemaakt || ""));
+
+  const aantalOpen    = (items || []).filter(x => !x.besteld).length;
+  const aantalBesteld = (items || []).filter(x =>  x.besteld).length;
+  const totaalOpen    = (items || []).filter(x => !x.besteld).reduce((s, x) => s + (x.prijs || 0), 0);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Bestellijst</div>
+        <Btn small onClick={openNieuw}>+ Toevoegen</Btn>
+      </div>
+
+      {/* Tellers */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <Badge color={C.orange}>{aantalOpen} te bestellen</Badge>
+        <Badge color={C.green}>{aantalBesteld} besteld</Badge>
+        {aantalOpen > 0 && <Badge color={C.purple}>≈ {fmt(totaalOpen)}</Badge>}
+      </div>
+
+      {/* Filter */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[
+          { id: "open",    label: "🛒 Te bestellen" },
+          { id: "besteld", label: "✅ Besteld" },
+          { id: "alles",   label: "📁 Alles" },
+        ].map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)} style={{
+            padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 700,
+            border: filter === f.id ? `1px solid ${C.pink}` : "1px solid rgba(255,255,255,0.12)",
+            background: filter === f.id ? `rgba(232,121,249,0.15)` : "transparent",
+            color: filter === f.id ? C.pink : C.muted, cursor: "pointer", fontFamily: "inherit",
+          }}>{f.label}</button>
+        ))}
+      </div>
+
+      {/* Lijst */}
+      {gefilterdeItems.length === 0
+        ? <EmptyState icon="🛒" text={filter === "besteld" ? "Nog niets besteld" : "Bestellijst is leeg"} />
+        : gefilterdeItems.map(item => (
+          <Card key={item.id} style={{ opacity: item.besteld ? 0.6 : 1 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              {/* Afvink-knop */}
+              <button onClick={() => onToggle(item.id)} style={{
+                flexShrink: 0, width: 26, height: 26, borderRadius: 8, marginTop: 2,
+                border: `2px solid ${item.besteld ? C.green : "rgba(255,255,255,0.25)"}`,
+                background: item.besteld ? C.green + "33" : "transparent",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {item.besteld && <span style={{ fontSize: 14, color: C.green }}>✓</span>}
+              </button>
+
+              {/* Inhoud */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: item.besteld ? C.muted : "#fff",
+                  textDecoration: item.besteld ? "line-through" : "none", marginBottom: 4 }}>
+                  {item.naam}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: item.notitie ? 6 : 0 }}>
+                  {item.prijs > 0 && <Badge color={C.purple}>{fmt(item.prijs)}</Badge>}
+                  {item.link && (
+                    <a href={item.link.startsWith("http") ? item.link : "https://" + item.link}
+                      target="_blank" rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 12, color: C.pink, textDecoration: "none", fontWeight: 700,
+                        display: "flex", alignItems: "center", gap: 3 }}>
+                      🔗 Webshop
+                    </a>
+                  )}
+                  {item.besteldOp && (
+                    <span style={{ fontSize: 11, color: C.green }}>
+                      ✓ besteld {new Date(item.besteldOp).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                    </span>
+                  )}
+                </div>
+                {item.notitie && (
+                  <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.notitie}</div>
+                )}
+              </div>
+
+              {/* Acties */}
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                {!item.besteld && <Btn small variant="secondary" onClick={() => openEdit(item)}>✏️</Btn>}
+                <Btn small variant="danger" onClick={() => onDelete(item.id)}>🗑️</Btn>
+              </div>
+            </div>
+          </Card>
+        ))
+      }
+
+      {/* Modal */}
+      <Modal open={modal} onClose={() => setModal(false)} title={editItem ? "Product bewerken" : "Product toevoegen"}>
+        <Input label="Productnaam *" value={form.naam} onChange={e => sf("naam", e.target.value)} placeholder="Bijv. OPI Base Coat" />
+        <Input label="Link (webshop)" type="url" value={form.link} onChange={e => sf("link", e.target.value)} placeholder="https://..." />
+        <Input label="Prijs (€)" type="number" step="0.01" min="0" value={form.prijs} onChange={e => sf("prijs", e.target.value)} placeholder="0.00" />
+        <Textarea label="Notitie" value={form.notitie} onChange={e => sf("notitie", e.target.value)} placeholder="Bijv. maat L, kleur nude..." />
+        <Btn fullWidth onClick={submit} disabled={!form.naam.trim()} style={{ marginTop: 4 }}>
+          {editItem ? "Opslaan" : "Toevoegen"}
+        </Btn>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -2987,6 +3118,7 @@ export default function App() {
   const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
   const [facturen, setFacturen] = useState([]);
   const [todos, setTodos] = useState([]);
+  const [bestellijst, setBestellijst] = useState([]);
   const IB_DEFAULTS = { salaris: "0", urencriterium: "ja", starter: "nee" };
   const [ibInst, setIbInstState] = useState(IB_DEFAULTS);
   const [salonInst, setSalonInst] = useState({
@@ -3014,6 +3146,7 @@ export default function App() {
       if (db.salonInst) setSalonInst(s => ({ ...s, ...db.salonInst }));
       if (db.facturen) setFacturen(db.facturen);
       if (db.todos) setTodos(db.todos);
+      if (db.bestellijst) setBestellijst(db.bestellijst);
       if (db.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...db.ibInst }));
       setLoading(false);
     })();
@@ -3032,6 +3165,7 @@ export default function App() {
       if (nieuweData.salonInst) setSalonInst(s => ({ ...s, ...nieuweData.salonInst }));
       if (nieuweData.facturen) setFacturen(nieuweData.facturen);
       if (nieuweData.todos) setTodos(nieuweData.todos);
+      if (nieuweData.bestellijst) setBestellijst(nieuweData.bestellijst);
       if (nieuweData.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...nieuweData.ibInst }));
       showToast("🔄 Data bijgewerkt");
     });
@@ -3327,6 +3461,38 @@ export default function App() {
     showToast("✓ NUC instellingen opgeslagen & gesynchroniseerd");
   };
 
+  // ── Bestellijst handlers ─────────────────────────────────────────────────
+  const addBestelling = async (data) => {
+    const item = { id: uid(), ...data, besteld: false, aangemaakt: new Date().toISOString() };
+    const updated = [...(dbRef.current.bestellijst || []), item];
+    setBestellijst(updated);
+    await persist({ bestellijst: updated });
+    showToast("✓ Product toegevoegd");
+  };
+
+  const toggleBestelling = async (id) => {
+    const now = new Date().toISOString();
+    const updated = (dbRef.current.bestellijst || []).map(x =>
+      x.id === id ? { ...x, besteld: !x.besteld, besteldOp: !x.besteld ? now : null } : x
+    );
+    setBestellijst(updated);
+    await persist({ bestellijst: updated });
+  };
+
+  const deleteBestelling = async (id) => {
+    const updated = (dbRef.current.bestellijst || []).filter(x => x.id !== id);
+    setBestellijst(updated);
+    await persist({ bestellijst: updated });
+    showToast("Product verwijderd");
+  };
+
+  const editBestelling = async (id, data) => {
+    const updated = (dbRef.current.bestellijst || []).map(x => x.id === id ? { ...x, ...data } : x);
+    setBestellijst(updated);
+    await persist({ bestellijst: updated });
+    showToast("✓ Product bijgewerkt");
+  };
+
   // ── IB instellingen ───────────────────────────────────────────────────────
   const updateIbInst = async (inst) => {
     const bijgewerkt = { ...IB_DEFAULTS, ...inst };
@@ -3400,6 +3566,7 @@ export default function App() {
     { id: "facturen",  icon: "🧾", label: "Facturen" },
     { id: "stempels",  icon: "💳", label: "Stempels" },
     { id: "todos",     icon: "✅", label: "Taken" },
+    { id: "bestellen", icon: "🛒", label: "Bestellen" },
     { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -3444,6 +3611,7 @@ export default function App() {
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
     stempels:  <Stempelkaart klanten={klanten} onStempel={geefStempel} />,
     todos:     <TodoLijst todos={todos} onAdd={addTodo} onToggle={toggleTodo} onDelete={deleteTodo} onEdit={editTodo} />,
+    bestellen: <Bestellijst items={bestellijst} onAdd={addBestelling} onToggle={toggleBestelling} onDelete={deleteBestelling} onEdit={editBestelling} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
