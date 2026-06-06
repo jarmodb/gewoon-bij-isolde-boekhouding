@@ -499,12 +499,13 @@ function BonUpload({ onUploaded, datum, bedrag, type, uploading, setUploading, n
   );
 }
 
-function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakFactuur }) {
+function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakFactuur, onAddKlant }) {
   const [modal, setModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [nieuweKlant, setNieuweKlant] = useState(null);
   const LEEG_INC = { datum: TODAY, behandeling: "", klant: "", betaalwijze: "", prijs: "", bonPad: "" };
   const [form, setForm] = useState(LEEG_INC);
   const [btwModus, setBtwModus] = useState("incl"); // "incl" of "excl"
@@ -545,6 +546,12 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakF
       prijs, btw, exclBtw };
     if (editItem) { onEdit({ ...editItem, ...item }); }
     else { onAdd({ id: uid(), ...item }); }
+    // Check of ingevulde naam een nieuwe klant is
+    if (form.klant && !klanten.some(k =>
+      `${k.voornaam} ${k.achternaam}`.trim().toLowerCase() === form.klant.trim().toLowerCase()
+    )) {
+      setNieuweKlant(form.klant.trim());
+    }
     setModal(false); setEditItem(null); setForm(LEEG_INC); setBtwModus("incl");
   };
 
@@ -561,6 +568,23 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakF
         <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Inkomsten</div>
         <Btn onClick={() => { setEditItem(null); setForm(LEEG_INC); setModal(true); }} small>+ Toevoegen</Btn>
       </div>
+
+      {/* Nieuwe klant melding */}
+      {nieuweKlant && (
+        <Card style={{ background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.3)", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: C.orange, marginBottom: 10 }}>
+            👤 <strong>{nieuweKlant}</strong> staat nog niet in je relaties.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn small onClick={() => {
+              const delen = nieuweKlant.split(" ");
+              onAddKlant({ id: uid(), voornaam: delen[0] || nieuweKlant, achternaam: delen.slice(1).join(" "), telefoon: "", email: "", vasteBeh: "", notities: "" });
+              setNieuweKlant(null);
+            }}>Toevoegen aan relaties</Btn>
+            <Btn small variant="ghost" onClick={() => setNieuweKlant(null)}>Overslaan</Btn>
+          </div>
+        </Card>
+      )}
 
       {data.length > 0 && (
         <>
@@ -647,8 +671,23 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakF
             </div>
           );
         })()}
-        <Select label="Klant (optioneel)" value={form.klant} onChange={e => set("klant", e.target.value)}
-          options={klanten.map(k => ({ value: `${k.voornaam} ${k.achternaam}`.trim(), label: `${k.voornaam} ${k.achternaam}`.trim() }))} />
+        <Field label="Klant (optioneel)">
+          <input
+            list="klant-suggesties"
+            value={form.klant}
+            onChange={e => set("klant", e.target.value)}
+            placeholder="Typ of kies een klant..."
+            style={{ ...inputStyle }}
+            onFocus={e => e.target.style.borderColor = C.pink}
+            onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+          />
+          <datalist id="klant-suggesties">
+            {klanten.map(k => {
+              const naam = `${k.voornaam} ${k.achternaam}`.trim();
+              return <option key={k.id} value={naam} />;
+            })}
+          </datalist>
+        </Field>
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)}
           options={BETAALWIJZE} />
         <BonUpload type="inkomen" datum={form.datum} bedrag={form.prijs}
@@ -808,8 +847,20 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
             </div>
           );
         })()}
-        <Select label="Leverancier" value={form.leverancier} onChange={e => set("leverancier", e.target.value)}
-          options={leveranciers.map(l => ({ value: l.bedrijf, label: l.bedrijf }))} />
+        <Field label="Leverancier (optioneel)">
+          <input
+            list="lev-suggesties"
+            value={form.leverancier}
+            onChange={e => set("leverancier", e.target.value)}
+            placeholder="Typ of kies een leverancier..."
+            style={{ ...inputStyle }}
+            onFocus={e => e.target.style.borderColor = C.pink}
+            onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+          />
+          <datalist id="lev-suggesties">
+            {leveranciers.map(l => <option key={l.id} value={l.bedrijf} />)}
+          </datalist>
+        </Field>
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)} options={BETAALWIJZE} />
         <BonUpload type="uitgave" datum={form.datum} bedrag={form.bedrag}
           naam={form.leverancier} omschrijving={form.omschrijving}
@@ -1707,7 +1758,7 @@ const KWARTALEN = [
   { q: "Q4", label: "Kwartaal 4", periode: "Okt – Dec", maanden: [9,10,11] },
 ];
 
-function BTWOverzicht({ inkomsten, uitgaven }) {
+function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst }) {
   const huidigJaar = new Date().getFullYear();
   const jaren = [...new Set([
     ...inkomsten.map(x => new Date(x.datum).getFullYear()),
@@ -1719,16 +1770,12 @@ function BTWOverzicht({ inkomsten, uitgaven }) {
   const [openKwartaal, setOpenKwartaal] = useState(null);
   const [sectie, setSectie] = useState("btw"); // "btw" | "ib"
 
-  // IB instellingen (opgeslagen in localStorage)
-  const [ibInst, setIbInstState] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ib_instellingen") || "{}"); } catch { return {}; }
-  });
-  const setIbInst = (v) => {
-    setIbInstState(v);
-    try { localStorage.setItem("ib_instellingen", JSON.stringify(v)); } catch {}
-  };
+  // IB instellingen komen via props (gesynchroniseerd via Supabase)
+  const setIbInst = (v) => onUpdateIbInst(v);
   const [editIb, setEditIb] = useState(false);
   const [ibForm, setIbForm] = useState(ibInst);
+  // Sync ibForm als ibInst van buiten verandert (Realtime sync)
+  useEffect(() => { if (!editIb) setIbForm(ibInst); }, [ibInst]);
   const ibf = (k, v) => setIbForm(f => ({ ...f, [k]: v }));
 
   const btwVoorPeriode = (maanden) => {
@@ -2924,6 +2971,8 @@ export default function App() {
   const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
   const [facturen, setFacturen] = useState([]);
   const [todos, setTodos] = useState([]);
+  const IB_DEFAULTS = { salaris: "0", urencriterium: "ja", starter: "nee" };
+  const [ibInst, setIbInstState] = useState(IB_DEFAULTS);
   const [salonInst, setSalonInst] = useState({
     naam: "Gewoon bij Isolde", adres: "", postcode: "", stad: "",
     kvk: "", btwNummer: "", iban: "", betalingstermijn: "14",
@@ -2949,6 +2998,7 @@ export default function App() {
       if (db.salonInst) setSalonInst(s => ({ ...s, ...db.salonInst }));
       if (db.facturen) setFacturen(db.facturen);
       if (db.todos) setTodos(db.todos);
+      if (db.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...db.ibInst }));
       setLoading(false);
     })();
 
@@ -2966,6 +3016,7 @@ export default function App() {
       if (nieuweData.salonInst) setSalonInst(s => ({ ...s, ...nieuweData.salonInst }));
       if (nieuweData.facturen) setFacturen(nieuweData.facturen);
       if (nieuweData.todos) setTodos(nieuweData.todos);
+      if (nieuweData.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...nieuweData.ibInst }));
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -3260,6 +3311,13 @@ export default function App() {
     showToast("✓ NUC instellingen opgeslagen & gesynchroniseerd");
   };
 
+  // ── IB instellingen ───────────────────────────────────────────────────────
+  const updateIbInst = async (inst) => {
+    const bijgewerkt = { ...IB_DEFAULTS, ...inst };
+    setIbInstState(bijgewerkt);
+    await persist({ ibInst: bijgewerkt });
+  };
+
   // ── Todo handlers ─────────────────────────────────────────────────────────
   const addTodo = async ({ tekst, prioriteit }) => {
     const item = { id: uid(), tekst, prioriteit, gedaan: false, aangemaakt: new Date().toISOString() };
@@ -3353,7 +3411,7 @@ export default function App() {
 
   const pageProps = {
     home:      <Dashboard inkomsten={inkomsten} uitgaven={uitgaven} kleuren={kleuren} afspraken={afspraken} onNavigate={goToTab} />,
-    inkomsten: <Inkomsten data={inkomsten} prijslijst={prijslijst} klanten={klanten} onAdd={addInkomst} onDelete={deleteItem} onEdit={editInkomst} onMaakFactuur={maakFactuur} />,
+    inkomsten: <Inkomsten data={inkomsten} prijslijst={prijslijst} klanten={klanten} onAdd={addInkomst} onDelete={deleteItem} onEdit={editInkomst} onMaakFactuur={maakFactuur} onAddKlant={addKlant} />,
     uitgaven:  <Uitgaven data={uitgaven} leveranciers={leveranciers} onAdd={addUitgave} onDelete={deleteItem} onEdit={editUitgave} />,
     relaties:  <Relaties klanten={klanten} leveranciers={leveranciers} prijslijst={prijslijst}
                   onAddKlant={addKlant} onDeleteKlant={deleteKlant} onEditKlant={editKlant}
@@ -3370,7 +3428,7 @@ export default function App() {
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
     stempels:  <Stempelkaart klanten={klanten} onStempel={geefStempel} />,
     todos:     <TodoLijst todos={todos} onAdd={addTodo} onToggle={toggleTodo} onDelete={deleteTodo} onEdit={editTodo} />,
-    btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} />,
+    btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
