@@ -1285,7 +1285,14 @@ const PLAN_DAGEN = ["Ma","Di","Wo","Do","Vr","Za","Zo"];
 const PLAN_MAANDEN = ["Januari","Februari","Maart","April","Mei","Juni","Juli","Augustus","September","Oktober","November","December"];
 const STATUS_KLEUR = { gepland:"#6366f1", bevestigd:"#22c55e", voltooid:"#a855f7", geannuleerd:"#f87171" };
 
-function dagStr(d) { return d.toISOString().slice(0,10); }
+function dagStr(d) {
+  // Gebruik lokale datum-onderdelen (NIET toISOString — die converteert naar UTC
+  // waardoor in tijdzone UTC+1/+2 een lokale middernacht als gisteren wordt teruggegeven)
+  const j = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dag = String(d.getDate()).padStart(2, "0");
+  return `${j}-${m}-${dag}`;
+}
 function weekMaandag(d) {
   const r = new Date(d); const dw = r.getDay();
   r.setDate(r.getDate() - (dw === 0 ? 6 : dw - 1)); return r;
@@ -1450,6 +1457,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
   };
 
   const MaandView = () => {
+    const isMobiel = window.innerWidth < 640;
     const j = peildatum.getFullYear(), m = peildatum.getMonth();
     const eersteWd = new Date(j, m, 1).getDay();
     const offset = eersteWd === 0 ? 6 : eersteWd - 1;
@@ -1457,29 +1465,93 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
     const cellen = Array.from({ length: offset + aantalDagen }, (_, i) => i < offset ? null : new Date(j, m, i - offset + 1));
     return (
       <div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 4 }}>
-          {PLAN_DAGEN.map(d => <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 800, color: C.muted, padding: "4px 0" }}>{d}</div>)}
+        {/* Dagnamen header */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: isMobiel ? 1 : 2, marginBottom: isMobiel ? 2 : 4 }}>
+          {PLAN_DAGEN.map(d => (
+            <div key={d} style={{ textAlign: "center", fontSize: isMobiel ? 8 : 9, fontWeight: 800, color: C.muted, padding: isMobiel ? "2px 0" : "4px 0" }}>
+              {isMobiel ? d.slice(0, 1) : d}
+            </div>
+          ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+
+        {/* Kalendercellen */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: isMobiel ? 1 : 2 }}>
           {cellen.map((d, i) => {
             if (!d) return <div key={`_${i}`} />;
             const s = dagStr(d); const lijst = opDag(s); const isVandaag = s === TODAY;
             return (
-              <div key={s} onClick={() => openNieuw(s)} style={{ minHeight: 54, borderRadius: 8, padding: "5px 4px", cursor: "pointer",
-                background: isVandaag ? `linear-gradient(135deg,${C.pink}22,${C.purple}22)` : "rgba(255,255,255,0.04)",
-                border: `1px solid ${isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}` }}>
-                <div style={{ fontSize: 11, fontWeight: isVandaag ? 900 : 600, color: isVandaag ? C.pink : "#fff", marginBottom: 2 }}>{d.getDate()}</div>
-                {lijst.slice(0, 2).map(a => (
-                  <div key={a.id} onClick={e => { e.stopPropagation(); openDag(s); }} style={{
-                    fontSize: 8, fontWeight: 700, color: "#fff", background: (STATUS_KLEUR[a.status] || C.purple) + "cc",
-                    borderRadius: 3, padding: "1px 3px", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>{a.tijdstip} {a.klantNaam || a.behandeling}</div>
-                ))}
-                {lijst.length > 2 && <div style={{ fontSize: 8, color: C.muted }}>+{lijst.length - 2}</div>}
+              <div key={s} onClick={() => isMobiel ? openDag(s) : openNieuw(s)}
+                style={{
+                  minHeight: isMobiel ? 42 : 54,
+                  borderRadius: isMobiel ? 6 : 8,
+                  padding: isMobiel ? "4px 2px" : "5px 4px",
+                  cursor: "pointer",
+                  background: isVandaag
+                    ? `linear-gradient(135deg,${C.pink}22,${C.purple}22)`
+                    : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}`,
+                }}>
+                {/* Dagnummer */}
+                <div style={{
+                  fontSize: isMobiel ? 10 : 11,
+                  fontWeight: isVandaag ? 900 : 600,
+                  color: isVandaag ? C.pink : "#fff",
+                  marginBottom: 2,
+                  textAlign: isMobiel ? "center" : "left",
+                }}>{d.getDate()}</div>
+
+                {/* Afspraken: op desktop tekst, op mobiel gekleurde stippen */}
+                {isMobiel ? (
+                  lijst.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
+                      {lijst.slice(0, 3).map(a => (
+                        <div key={a.id} style={{
+                          width: 6, height: 6, borderRadius: "50%",
+                          background: STATUS_KLEUR[a.status] || C.purple,
+                          flexShrink: 0,
+                        }} />
+                      ))}
+                      {lijst.length > 3 && (
+                        <div style={{ fontSize: 7, color: C.muted, lineHeight: "6px" }}>+{lijst.length - 3}</div>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {lijst.slice(0, 2).map(a => (
+                      <div key={a.id} onClick={e => { e.stopPropagation(); openDag(s); }} style={{
+                        fontSize: 8, fontWeight: 700, color: "#fff",
+                        background: (STATUS_KLEUR[a.status] || C.purple) + "cc",
+                        borderRadius: 3, padding: "1px 3px", marginBottom: 1,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{a.tijdstip} {a.klantNaam || a.behandeling}</div>
+                    ))}
+                    {lijst.length > 2 && <div style={{ fontSize: 8, color: C.muted }}>+{lijst.length - 2}</div>}
+                  </>
+                )}
               </div>
             );
           })}
         </div>
+
+        {/* Mobiel: legenda */}
+        {isMobiel && (
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {Object.entries(STATUS_KLEUR).map(([status, kleur]) => (
+              <div key={status} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: kleur }} />
+                <span style={{ fontSize: 10, color: C.muted, textTransform: "capitalize" }}>{status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mobiel: tip */}
+        {isMobiel && (
+          <div style={{ marginTop: 8, fontSize: 11, color: C.muted, textAlign: "center" }}>
+            Tik op een dag om afspraken te zien of toe te voegen
+          </div>
+        )}
       </div>
     );
   };
