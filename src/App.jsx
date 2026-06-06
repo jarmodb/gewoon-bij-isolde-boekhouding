@@ -1368,16 +1368,37 @@ function weekMaandag(d) {
   r.setDate(r.getDate() - (dw === 0 ? 6 : dw - 1)); return r;
 }
 
-function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien, onAddKlant, inkomsten, facturen }) {
+const BLOK_TYPES = ["Vakantie","Cursus","Ziek","Overig"];
+const BLOK_KLEUR = { Vakantie:"#fb923c", Cursus:"#6366f1", Ziek:"#f87171", Overig:"#94a3b8" };
+
+function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onVoltooien, onAddKlant, inkomsten, facturen, geblokkeerd, onAddBlok, onDeleteBlok }) {
   const [weergave, setWeergave] = useState("week");
   const [peildatum, setPeildatum] = useState(new Date(TODAY));
   const [modal, setModal] = useState(false);
+  const [blokModal, setBlokModal] = useState(false);
+  const [blokForm, setBlokForm] = useState({ van: TODAY, tot: TODAY, type: "Vakantie", reden: "" });
   const [editItem, setEditItem] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
-  const [nieuweKlant, setNieuweKlant] = useState(null); // naam van onbekende klant na opslaan
+  const [nieuweKlant, setNieuweKlant] = useState(null);
   const LEEG = { datum: TODAY, tijdstip: "10:00", duurMinuten: 60, klantNaam: "", behandeling: "", prijsIndicatie: "", notities: "", status: "gepland" };
   const [form, setForm] = useState(LEEG);
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const sbf = (k, v) => setBlokForm(f => ({ ...f, [k]: v }));
+
+  // Geeft het blok-object terug als datum geblokkeerd is, anders null
+  const getBlok = (str) => (geblokkeerd || []).find(b => str >= b.van && str <= b.tot) || null;
+
+  const openBlokModal = (datum = TODAY) => {
+    setBlokForm({ van: datum, tot: datum, type: "Vakantie", reden: "" });
+    setBlokModal(true);
+  };
+  const submitBlok = () => {
+    if (!blokForm.van || !blokForm.tot) return;
+    const van = blokForm.van <= blokForm.tot ? blokForm.van : blokForm.tot;
+    const tot = blokForm.van <= blokForm.tot ? blokForm.tot : blokForm.van;
+    onAddBlok({ id: uid(), van, tot, type: blokForm.type, reden: blokForm.reden.trim() });
+    setBlokModal(false);
+  };
 
   const openNieuw = (datum = TODAY) => { setEditItem(null); setForm({ ...LEEG, datum }); setModal(true); };
   const openEdit = (a) => {
@@ -1477,11 +1498,31 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
   const DagView = () => {
     const s = dagStr(peildatum);
     const lijst = opDag(s);
+    const blok = getBlok(s);
     return (
       <div>
+        {/* Geblokkeerde dag banner */}
+        {blok && (
+          <Card style={{ background: `rgba(248,113,113,0.1)`, border: `1px solid rgba(248,113,113,0.35)`, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 2 }}>
+                  🔒 {blok.type}{blok.reden ? ` — ${blok.reden}` : ""}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>
+                  {blok.van === blok.tot ? "Dagblokkering" : `${fmtDate(blok.van)} t/m ${fmtDate(blok.tot)}`}
+                </div>
+              </div>
+              <Btn small variant="danger" onClick={() => onDeleteBlok(blok.id)}>Verwijder</Btn>
+            </div>
+          </Card>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: C.muted }}>{lijst.length} afspraak{lijst.length !== 1 ? "en" : ""}</div>
-          <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>
+          <div style={{ display: "flex", gap: 8 }}>
+            {!blok && <Btn small variant="secondary" onClick={() => openBlokModal(s)}>🔒 Blokkeren</Btn>}
+            <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>
+          </div>
         </div>
         {lijst.length === 0
           ? <EmptyState icon="📅" text="Geen afspraken op deze dag" />
@@ -1499,13 +1540,15 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 12 }}>
           {dagen.map(d => {
             const s = dagStr(d); const isVandaag = s === TODAY; const n = opDag(s).length;
+            const blok = getBlok(s);
             return (
               <div key={s} onClick={() => openDag(s)} style={{ textAlign: "center", padding: "8px 2px", borderRadius: 12, cursor: "pointer",
-                background: isVandaag ? `linear-gradient(135deg,${C.pink}33,${C.purple}33)` : "rgba(255,255,255,0.04)",
-                border: `1px solid ${isVandaag ? C.pink + "66" : "rgba(255,255,255,0.08)"}` }}>
-                <div style={{ fontSize: 9, color: C.muted, fontWeight: 700 }}>{PLAN_DAGEN[d.getDay() === 0 ? 6 : d.getDay() - 1]}</div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: isVandaag ? C.pink : "#fff" }}>{d.getDate()}</div>
-                {n > 0 && <div style={{ fontSize: 9, color: C.purple, fontWeight: 800 }}>{n}×</div>}
+                background: blok ? `rgba(248,113,113,0.12)` : isVandaag ? `linear-gradient(135deg,${C.pink}33,${C.purple}33)` : "rgba(255,255,255,0.04)",
+                border: `1px solid ${blok ? "rgba(248,113,113,0.35)" : isVandaag ? C.pink + "66" : "rgba(255,255,255,0.08)"}` }}>
+                <div style={{ fontSize: 9, color: blok ? C.red : C.muted, fontWeight: 700 }}>{PLAN_DAGEN[d.getDay() === 0 ? 6 : d.getDay() - 1]}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: blok ? C.red : isVandaag ? C.pink : "#fff" }}>{d.getDate()}</div>
+                {blok ? <div style={{ fontSize: 8, color: C.red, fontWeight: 800 }}>🔒</div>
+                  : n > 0 && <div style={{ fontSize: 9, color: C.purple, fontWeight: 800 }}>{n}×</div>}
               </div>
             );
           })}
@@ -1549,46 +1592,59 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           {cellen.map((d, i) => {
             if (!d) return <div key={`_${i}`} />;
             const s = dagStr(d); const lijst = opDag(s); const isVandaag = s === TODAY;
+            const blok = getBlok(s);
             return (
-              <div key={s} onClick={() => isMobiel ? openDag(s) : openNieuw(s)}
+              <div key={s} onClick={() => openDag(s)}
                 style={{
                   minHeight: isMobiel ? 42 : 54,
                   borderRadius: isMobiel ? 6 : 8,
                   padding: isMobiel ? "4px 2px" : "5px 4px",
                   cursor: "pointer",
-                  background: isVandaag
+                  background: blok
+                    ? "rgba(248,113,113,0.12)"
+                    : isVandaag
                     ? `linear-gradient(135deg,${C.pink}22,${C.purple}22)`
                     : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}`,
+                  border: `1px solid ${blok ? "rgba(248,113,113,0.35)" : isVandaag ? C.pink + "50" : "rgba(255,255,255,0.07)"}`,
                 }}>
                 {/* Dagnummer */}
                 <div style={{
                   fontSize: isMobiel ? 10 : 11,
                   fontWeight: isVandaag ? 900 : 600,
-                  color: isVandaag ? C.pink : "#fff",
+                  color: blok ? C.red : isVandaag ? C.pink : "#fff",
                   marginBottom: 2,
                   textAlign: isMobiel ? "center" : "left",
                 }}>{d.getDate()}</div>
 
                 {/* Afspraken: op desktop tekst, op mobiel gekleurde stippen */}
                 {isMobiel ? (
-                  lijst.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
-                      {lijst.slice(0, 3).map(a => (
-                        <div key={a.id} style={{
-                          width: 6, height: 6, borderRadius: "50%",
-                          background: STATUS_KLEUR[a.status] || C.purple,
-                          flexShrink: 0,
-                        }} />
-                      ))}
-                      {lijst.length > 3 && (
-                        <div style={{ fontSize: 7, color: C.muted, lineHeight: "6px" }}>+{lijst.length - 3}</div>
-                      )}
-                    </div>
-                  )
+                  blok
+                    ? <div style={{ textAlign: "center", fontSize: 10 }}>🔒</div>
+                    : lijst.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
+                          {lijst.slice(0, 3).map(a => (
+                            <div key={a.id} style={{
+                              width: 6, height: 6, borderRadius: "50%",
+                              background: STATUS_KLEUR[a.status] || C.purple,
+                              flexShrink: 0,
+                            }} />
+                          ))}
+                          {lijst.length > 3 && (
+                            <div style={{ fontSize: 7, color: C.muted, lineHeight: "6px" }}>+{lijst.length - 3}</div>
+                          )}
+                        </div>
+                      )
                 ) : (
                   <>
-                    {lijst.slice(0, 2).map(a => (
+                    {blok && (
+                      <div style={{ fontSize: 8, fontWeight: 700, color: C.red,
+                        background: "rgba(248,113,113,0.2)", borderRadius: 3,
+                        padding: "1px 3px", marginBottom: 1, overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        🔒 {blok.type}
+                      </div>
+                    )}
+                    {lijst.slice(0, blok ? 1 : 2).map(a => (
                       <div key={a.id} onClick={e => { e.stopPropagation(); openDag(s); }} style={{
                         fontSize: 8, fontWeight: 700, color: "#fff",
                         background: (STATUS_KLEUR[a.status] || C.purple) + "cc",
@@ -1596,7 +1652,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{a.tijdstip} {a.klantNaam || a.behandeling}</div>
                     ))}
-                    {lijst.length > 2 && <div style={{ fontSize: 8, color: C.muted }}>+{lijst.length - 2}</div>}
+                    {lijst.length > (blok ? 1 : 2) && <div style={{ fontSize: 8, color: C.muted }}>+{lijst.length - (blok ? 1 : 2)}</div>}
                   </>
                 )}
               </div>
@@ -1674,6 +1730,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
         <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Planning</div>
         <div style={{ display: "flex", gap: 8 }}>
           <Btn small variant="secondary" onClick={printOverzicht}>🖨️ Print</Btn>
+          <Btn small variant="secondary" onClick={() => openBlokModal()}>🔒 Blokkeren</Btn>
           <Btn small onClick={() => openNieuw()}>+ Afspraak</Btn>
         </div>
       </div>
@@ -1702,6 +1759,17 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
       <ConfirmDialog open={!!confirmId} message="Deze afspraak wordt permanent verwijderd."
         onCancel={() => setConfirmId(null)}
         onConfirm={() => { onDelete("afspraken", confirmId); setConfirmId(null); }} />
+
+      {/* Dag blokkeren modal */}
+      <Modal open={blokModal} onClose={() => setBlokModal(false)} title="Dag(en) blokkeren">
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}><Input label="Van" type="date" value={blokForm.van} onChange={e => sbf("van", e.target.value)} /></div>
+          <div style={{ flex: 1 }}><Input label="Tot en met" type="date" value={blokForm.tot} onChange={e => sbf("tot", e.target.value)} /></div>
+        </div>
+        <Select label="Type" value={blokForm.type} onChange={e => sbf("type", e.target.value)} options={BLOK_TYPES} />
+        <Input label="Reden (optioneel)" value={blokForm.reden} onChange={e => sbf("reden", e.target.value)} placeholder="Bijv. zomervakantie, nagelcursus OPI..." />
+        <Btn fullWidth onClick={submitBlok} style={{ marginTop: 4 }}>🔒 Blokkeren</Btn>
+      </Modal>
 
       <Modal open={modal} onClose={() => { setModal(false); setEditItem(null); }} title={editItem ? "Afspraak bewerken" : "Afspraak toevoegen"}>
         <Input label="Datum" type="date" value={form.datum} onChange={e => sf("datum", e.target.value)} />
@@ -3091,6 +3159,141 @@ function Bestellijst({ items, onAdd, onToggle, onDelete, onEdit }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// KILOMETERREGISTRATIE
+// ════════════════════════════════════════════════════════════════════════════
+const KM_VERGOEDING = 0.23; // €0,23 per zakelijke km (2026)
+const KM_TYPES = ["Zakelijk", "Woon-werk", "Privé"];
+
+function KilometerRegistratie({ ritten, onAdd, onDelete, onEdit }) {
+  const LEEG = { datum: TODAY, van: "", naar: "", omschrijving: "", km: "", type: "Zakelijk" };
+  const [form, setForm] = useState(LEEG);
+  const [modal, setModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [filterJaar, setFilterJaar] = useState(new Date().getFullYear());
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const openNieuw = () => { setEditItem(null); setForm(LEEG); setModal(true); };
+  const openEdit = (r) => {
+    setEditItem(r);
+    setForm({ datum: r.datum, van: r.van || "", naar: r.naar || "", omschrijving: r.omschrijving || "", km: r.km, type: r.type || "Zakelijk" });
+    setModal(true);
+  };
+  const submit = () => {
+    const km = parseFloat(form.km) || 0;
+    if (!form.datum || !km) return;
+    const data = { datum: form.datum, van: form.van.trim(), naar: form.naar.trim(), omschrijving: form.omschrijving.trim(), km, type: form.type };
+    if (editItem) onEdit(editItem.id, data);
+    else onAdd(data);
+    setModal(false);
+  };
+
+  const jaren = [...new Set((ritten || []).map(r => new Date(r.datum).getFullYear()))];
+  if (!jaren.includes(new Date().getFullYear())) jaren.push(new Date().getFullYear());
+  jaren.sort((a, b) => b - a);
+
+  const rittenJaar = (ritten || [])
+    .filter(r => new Date(r.datum).getFullYear() === filterJaar)
+    .sort((a, b) => b.datum.localeCompare(a.datum));
+
+  const totaalKm   = rittenJaar.reduce((s, r) => s + (r.km || 0), 0);
+  const zakelijkKm = rittenJaar.filter(r => r.type === "Zakelijk").reduce((s, r) => s + (r.km || 0), 0);
+  const aftrek     = zakelijkKm * KM_VERGOEDING;
+
+  const TYPE_KLEUR = { Zakelijk: C.green, "Woon-werk": C.purple, Privé: C.muted };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>Kilometers</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {jaren.map(j => (
+            <button key={j} onClick={() => setFilterJaar(j)} style={{
+              padding: "5px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              border: "none", cursor: "pointer", fontFamily: "inherit",
+              background: j === filterJaar ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+              color: j === filterJaar ? "#fff" : C.muted,
+            }}>{j}</button>
+          ))}
+          <Btn small onClick={openNieuw}>+ Rit toevoegen</Btn>
+        </div>
+      </div>
+
+      {/* Statistieken */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Totaal km", waarde: `${totaalKm.toFixed(0)} km`, kleur: "#fff" },
+          { label: "Zakelijk km", waarde: `${zakelijkKm.toFixed(0)} km`, kleur: C.green },
+          { label: `Belastingaftrek (€${KM_VERGOEDING}/km)`, waarde: fmt(aftrek), kleur: C.purple },
+        ].map(({ label, waarde, kleur }) => (
+          <Card key={label} style={{ textAlign: "center", padding: "14px 8px" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: kleur, marginBottom: 4 }}>{waarde}</div>
+            <div style={{ fontSize: 10, color: C.muted, fontWeight: 700 }}>{label}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+        💡 Zakelijke kilometers zijn aftrekbaar à €{KM_VERGOEDING.toFixed(2).replace(".", ",")} per km in je aangifte inkomstenbelasting.
+      </div>
+
+      {/* Ritten lijst */}
+      {rittenJaar.length === 0
+        ? <EmptyState icon="🚗" text="Nog geen ritten geregistreerd" />
+        : rittenJaar.map(r => (
+          <Card key={r.id}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>
+                    {r.van && r.naar ? `${r.van} → ${r.naar}` : r.omschrijving || "Rit"}
+                  </span>
+                  <Badge color={TYPE_KLEUR[r.type] || C.muted}>{r.type}</Badge>
+                </div>
+                {r.van && r.naar && r.omschrijving && (
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{r.omschrijving}</div>
+                )}
+                <div style={{ fontSize: 12, color: C.muted }}>{fmtDate(r.datum)}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: r.type === "Zakelijk" ? C.green : "#fff" }}>
+                  {(r.km || 0).toFixed(1)} km
+                </div>
+                {r.type === "Zakelijk" && (
+                  <div style={{ fontSize: 11, color: C.purple }}>{fmt((r.km || 0) * KM_VERGOEDING)} aftrek</div>
+                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 4, justifyContent: "flex-end" }}>
+                  <button onClick={() => openEdit(r)} style={{ background: "none", border: "none", color: "rgba(200,168,233,0.6)", cursor: "pointer", fontSize: 15 }}>✏️</button>
+                  <button onClick={() => setConfirmId(r.id)} style={{ background: "none", border: "none", color: "rgba(248,113,113,0.5)", cursor: "pointer", fontSize: 15 }}>🗑</button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))
+      }
+
+      <ConfirmDialog open={!!confirmId} message="Deze rit wordt permanent verwijderd."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => { onDelete(confirmId); setConfirmId(null); }} />
+
+      <Modal open={modal} onClose={() => setModal(false)} title={editItem ? "Rit bewerken" : "Rit toevoegen"}>
+        <Input label="Datum" type="date" value={form.datum} onChange={e => sf("datum", e.target.value)} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}><Input label="Van" value={form.van} onChange={e => sf("van", e.target.value)} placeholder="Bijv. Axel" /></div>
+          <div style={{ flex: 1 }}><Input label="Naar" value={form.naar} onChange={e => sf("naar", e.target.value)} placeholder="Bijv. Goes" /></div>
+        </div>
+        <Input label="Omschrijving" value={form.omschrijving} onChange={e => sf("omschrijving", e.target.value)} placeholder="Bijv. inkopen materialen" />
+        <Input label="Kilometers" type="number" step="0.1" min="0" value={form.km} onChange={e => sf("km", e.target.value)} placeholder="0.0" />
+        <Select label="Type" value={form.type} onChange={e => sf("type", e.target.value)} options={KM_TYPES} />
+        <Btn fullWidth onClick={submit} disabled={!form.datum || !form.km} style={{ marginTop: 4 }}>
+          {editItem ? "Opslaan" : "Toevoegen"}
+        </Btn>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -3122,6 +3325,8 @@ export default function App() {
   const [facturen, setFacturen] = useState([]);
   const [todos, setTodos] = useState([]);
   const [bestellijst, setBestellijst] = useState([]);
+  const [geblokkeerd, setGeblokkeerd] = useState([]);
+  const [ritten, setRitten] = useState([]);
   const IB_DEFAULTS = { salaris: "0", urencriterium: "ja", starter: "nee" };
   const [ibInst, setIbInstState] = useState(IB_DEFAULTS);
   const [salonInst, setSalonInst] = useState({
@@ -3150,6 +3355,8 @@ export default function App() {
       if (db.facturen) setFacturen(db.facturen);
       if (db.todos) setTodos(db.todos);
       if (db.bestellijst) setBestellijst(db.bestellijst);
+      if (db.geblokkeerd) setGeblokkeerd(db.geblokkeerd);
+      if (db.ritten) setRitten(db.ritten);
       if (db.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...db.ibInst }));
       setLoading(false);
     })();
@@ -3169,6 +3376,8 @@ export default function App() {
       if (nieuweData.facturen) setFacturen(nieuweData.facturen);
       if (nieuweData.todos) setTodos(nieuweData.todos);
       if (nieuweData.bestellijst) setBestellijst(nieuweData.bestellijst);
+      if (nieuweData.geblokkeerd) setGeblokkeerd(nieuweData.geblokkeerd);
+      if (nieuweData.ritten) setRitten(nieuweData.ritten);
       if (nieuweData.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...nieuweData.ibInst }));
       showToast("🔄 Data bijgewerkt");
     });
@@ -3496,6 +3705,44 @@ export default function App() {
     showToast("✓ Product bijgewerkt");
   };
 
+  // ── Geblokkeerde dagen handlers ───────────────────────────────────────────
+  const addBlok = async (item) => {
+    const updated = [...(dbRef.current.geblokkeerd || []), item];
+    setGeblokkeerd(updated);
+    await persist({ geblokkeerd: updated });
+    showToast("🔒 Dag(en) geblokkeerd");
+  };
+
+  const deleteBlok = async (id) => {
+    const updated = (dbRef.current.geblokkeerd || []).filter(x => x.id !== id);
+    setGeblokkeerd(updated);
+    await persist({ geblokkeerd: updated });
+    showToast("Blokkering verwijderd");
+  };
+
+  // ── Kilometer handlers ────────────────────────────────────────────────────
+  const addRit = async (data) => {
+    const item = { id: uid(), ...data };
+    const updated = [...(dbRef.current.ritten || []), item];
+    setRitten(updated);
+    await persist({ ritten: updated });
+    showToast("✓ Rit toegevoegd");
+  };
+
+  const deleteRit = async (id) => {
+    const updated = (dbRef.current.ritten || []).filter(x => x.id !== id);
+    setRitten(updated);
+    await persist({ ritten: updated });
+    showToast("Rit verwijderd");
+  };
+
+  const editRit = async (id, data) => {
+    const updated = (dbRef.current.ritten || []).map(x => x.id === id ? { ...x, ...data } : x);
+    setRitten(updated);
+    await persist({ ritten: updated });
+    showToast("✓ Rit bijgewerkt");
+  };
+
   // ── IB instellingen ───────────────────────────────────────────────────────
   const updateIbInst = async (inst) => {
     const bijgewerkt = { ...IB_DEFAULTS, ...inst };
@@ -3570,6 +3817,7 @@ export default function App() {
     { id: "stempels",  icon: "💳", label: "Stempels" },
     { id: "todos",     icon: "✅", label: "Taken" },
     { id: "bestellen", icon: "🛒", label: "Bestellen" },
+    { id: "kilometers", icon: "🚗", label: "Kilometers" },
     { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -3608,13 +3856,15 @@ export default function App() {
     planning:  <Planning afspraken={afspraken} klanten={klanten} prijslijst={prijslijst}
                   onAdd={addAfspraak} onDelete={deleteAfspraak} onEdit={editAfspraak}
                   onVoltooien={voltooiAfspraak} onAddKlant={addKlant}
-                  inkomsten={inkomsten} facturen={facturen} />,
+                  inkomsten={inkomsten} facturen={facturen}
+                  geblokkeerd={geblokkeerd} onAddBlok={addBlok} onDeleteBlok={deleteBlok} />,
     kleuren:   <KleurenArchief data={kleuren} onAdd={addKleur} onDelete={deleteItem} onEdit={editKleur} />,
     facturen:  <Facturen facturen={facturen} salonInst={salonInst}
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
     stempels:  <Stempelkaart klanten={klanten} onStempel={geefStempel} />,
     todos:     <TodoLijst todos={todos} onAdd={addTodo} onToggle={toggleTodo} onDelete={deleteTodo} onEdit={editTodo} />,
     bestellen: <Bestellijst items={bestellijst} onAdd={addBestelling} onToggle={toggleBestelling} onDelete={deleteBestelling} onEdit={editBestelling} />,
+    kilometers: <KilometerRegistratie ritten={ritten} onAdd={addRit} onDelete={deleteRit} onEdit={editRit} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
