@@ -3178,24 +3178,66 @@ const KM_VERGOEDING = 0.23; // €0,23 per zakelijke km (2026)
 const KM_TYPES = ["Zakelijk", "Woon-werk", "Privé"];
 
 function KilometerRegistratie({ ritten, onAdd, onDelete, onEdit }) {
-  const LEEG = { datum: TODAY, van: "", naar: "", omschrijving: "", km: "", type: "Zakelijk" };
+  const LEEG = { datum: TODAY, van: "", naar: "", omschrijving: "", km: "", kmEnkelweg: "", retour: false, type: "Zakelijk" };
   const [form, setForm] = useState(LEEG);
   const [modal, setModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterJaar, setFilterJaar] = useState(new Date().getFullYear());
+  const [berekenLoading, setBerekenLoading] = useState(false);
+  const [berekenFout, setBerekenFout] = useState("");
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openNieuw = () => { setEditItem(null); setForm(LEEG); setModal(true); };
+  const openNieuw = () => { setEditItem(null); setForm(LEEG); setBerekenFout(""); setModal(true); };
   const openEdit = (r) => {
     setEditItem(r);
-    setForm({ datum: r.datum, van: r.van || "", naar: r.naar || "", omschrijving: r.omschrijving || "", km: r.km, type: r.type || "Zakelijk" });
+    setBerekenFout("");
+    setForm({ datum: r.datum, van: r.van || "", naar: r.naar || "", omschrijving: r.omschrijving || "",
+      km: r.km, kmEnkelweg: r.kmEnkelweg || r.km, retour: r.retour || false, type: r.type || "Zakelijk" });
     setModal(true);
   };
+
+  const toggleRetour = (val) => {
+    setForm(f => {
+      const enkel = parseFloat(f.kmEnkelweg) || parseFloat(f.km) || 0;
+      return { ...f, retour: val, km: enkel ? (val ? +(enkel * 2).toFixed(1) : enkel) : f.km };
+    });
+  };
+
+  // Bereken rijafstand via Nominatim (geocoding) + OSRM (routing)
+  const berekenAfstand = async () => {
+    if (!form.van.trim() || !form.naar.trim()) { setBerekenFout("Vul eerst vertrek- en aankomstadres in."); return; }
+    setBerekenLoading(true); setBerekenFout("");
+    try {
+      const geocode = async (adres) => {
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(adres)}&format=json&limit=1`, { headers: { "Accept-Language": "nl" } });
+        const d = await r.json();
+        if (!d.length) throw new Error(`"${adres}" niet gevonden`);
+        return { lat: d[0].lat, lon: d[0].lon };
+      };
+      const van  = await geocode(form.van);
+      // Kleine pauze om Nominatim rate-limit te respecteren
+      await new Promise(res => setTimeout(res, 1100));
+      const naar = await geocode(form.naar);
+      const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${van.lon},${van.lat};${naar.lon},${naar.lat}?overview=false`);
+      const routeData = await routeRes.json();
+      if (routeData.code !== "Ok") throw new Error("Route kon niet berekend worden");
+      const kmEnkelweg = +(routeData.routes[0].distance / 1000).toFixed(1);
+      const kmTotaal   = form.retour ? +(kmEnkelweg * 2).toFixed(1) : kmEnkelweg;
+      setForm(f => ({ ...f, km: kmTotaal, kmEnkelweg }));
+    } catch (e) {
+      setBerekenFout(e.message);
+    } finally {
+      setBerekenLoading(false);
+    }
+  };
+
   const submit = () => {
     const km = parseFloat(form.km) || 0;
     if (!form.datum || !km) return;
-    const data = { datum: form.datum, van: form.van.trim(), naar: form.naar.trim(), omschrijving: form.omschrijving.trim(), km, type: form.type };
+    const data = { datum: form.datum, van: form.van.trim(), naar: form.naar.trim(),
+      omschrijving: form.omschrijving.trim(), km, kmEnkelweg: parseFloat(form.kmEnkelweg) || km,
+      retour: form.retour, type: form.type };
     if (editItem) onEdit(editItem.id, data);
     else onAdd(data);
     setModal(false);
@@ -3272,6 +3314,9 @@ function KilometerRegistratie({ ritten, onAdd, onDelete, onEdit }) {
                 <div style={{ fontSize: 20, fontWeight: 900, color: r.type === "Zakelijk" ? C.green : "#fff" }}>
                   {(r.km || 0).toFixed(1)} km
                 </div>
+                {r.retour && r.kmEnkelweg && (
+                  <div style={{ fontSize: 11, color: C.muted }}>↩ {(r.kmEnkelweg).toFixed(1)} × 2</div>
+                )}
                 {r.type === "Zakelijk" && (
                   <div style={{ fontSize: 11, color: C.purple }}>{fmt((r.km || 0) * KM_VERGOEDING)} aftrek</div>
                 )}
@@ -3291,12 +3336,48 @@ function KilometerRegistratie({ ritten, onAdd, onDelete, onEdit }) {
 
       <Modal open={modal} onClose={() => setModal(false)} title={editItem ? "Rit bewerken" : "Rit toevoegen"}>
         <Input label="Datum" type="date" value={form.datum} onChange={e => sf("datum", e.target.value)} />
+
+        {/* Van / Naar + bereken knop */}
         <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 1 }}><Input label="Van" value={form.van} onChange={e => sf("van", e.target.value)} placeholder="Bijv. Axel" /></div>
-          <div style={{ flex: 1 }}><Input label="Naar" value={form.naar} onChange={e => sf("naar", e.target.value)} placeholder="Bijv. Goes" /></div>
+          <div style={{ flex: 1 }}><Input label="Van" value={form.van} onChange={e => { sf("van", e.target.value); setBerekenFout(""); }} placeholder="Bijv. Axel" /></div>
+          <div style={{ flex: 1 }}><Input label="Naar" value={form.naar} onChange={e => { sf("naar", e.target.value); setBerekenFout(""); }} placeholder="Bijv. Goes" /></div>
         </div>
+
+        {/* Retour toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <button type="button" onClick={() => toggleRetour(!form.retour)} style={{
+            width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+            border: `2px solid ${form.retour ? C.pink : "rgba(255,255,255,0.25)"}`,
+            background: form.retour ? C.pink + "33" : "transparent",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {form.retour && <span style={{ fontSize: 12, color: C.pink }}>✓</span>}
+          </button>
+          <span style={{ fontSize: 13, color: form.retour ? C.pink : C.muted, fontWeight: 600 }}>Retour (heen + terug)</span>
+        </div>
+
+        {/* Bereken knop + km veld */}
+        <Field label={`Kilometers${form.retour && form.kmEnkelweg ? ` (${form.kmEnkelweg} km × 2)` : ""}`}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="number" step="0.1" min="0" value={form.km}
+              onChange={e => { sf("km", e.target.value); sf("kmEnkelweg", ""); }}
+              placeholder="0.0" style={{ ...inputStyle, flex: 1 }}
+              onFocus={e => e.target.style.borderColor = C.pink}
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+              onWheel={e => e.target.blur()} />
+            <Btn variant="secondary" onClick={berekenAfstand} disabled={berekenLoading || !form.van || !form.naar}>
+              {berekenLoading ? "⏳" : "📍 Bereken"}
+            </Btn>
+          </div>
+          {berekenFout && <div style={{ fontSize: 12, color: C.red, marginTop: 6 }}>⚠️ {berekenFout}</div>}
+          {form.kmEnkelweg && !berekenLoading && (
+            <div style={{ fontSize: 12, color: C.green, marginTop: 6 }}>
+              ✓ {form.kmEnkelweg} km enkel{form.retour ? ` → ${form.km} km retour` : ""}
+            </div>
+          )}
+        </Field>
+
         <Input label="Omschrijving" value={form.omschrijving} onChange={e => sf("omschrijving", e.target.value)} placeholder="Bijv. inkopen materialen" />
-        <Input label="Kilometers" type="number" step="0.1" min="0" value={form.km} onChange={e => sf("km", e.target.value)} placeholder="0.0" />
         <Select label="Type" value={form.type} onChange={e => sf("type", e.target.value)} options={KM_TYPES} />
         <Btn fullWidth onClick={submit} disabled={!form.datum || !form.km} style={{ marginTop: 4 }}>
           {editItem ? "Opslaan" : "Toevoegen"}
