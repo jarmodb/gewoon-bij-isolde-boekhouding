@@ -2619,6 +2619,209 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// TODO LIJST
+// ════════════════════════════════════════════════════════════════════════════
+const TODO_PRIO = [
+  { value: "hoog",   label: "🔴 Hoog",   color: "#f87171" },
+  { value: "middel", label: "🟡 Middel",  color: "#fb923c" },
+  { value: "laag",   label: "🟢 Laag",    color: "#22c55e" },
+];
+
+function TodoLijst({ todos, onAdd, onToggle, onDelete, onEdit }) {
+  const [nieuweTekst, setNieuweTekst] = useState("");
+  const [nieuwePrio, setNieuwePrio]   = useState("middel");
+  const [bewerkId, setBewerkId]       = useState(null);
+  const [bewerkTekst, setBewerkTekst] = useState("");
+  const [bewerkPrio, setBewerkPrio]   = useState("middel");
+  const [filter, setFilter]           = useState("open"); // "open" | "gedaan" | "alles"
+
+  const voegToe = () => {
+    const t = nieuweTekst.trim();
+    if (!t) return;
+    onAdd({ tekst: t, prioriteit: nieuwePrio });
+    setNieuweTekst("");
+    setNieuwePrio("middel");
+  };
+
+  const startBewerk = (todo) => {
+    setBewerkId(todo.id);
+    setBewerkTekst(todo.tekst);
+    setBewerkPrio(todo.prioriteit || "middel");
+  };
+
+  const slaBewerk = () => {
+    const t = bewerkTekst.trim();
+    if (!t) return;
+    onEdit(bewerkId, { tekst: t, prioriteit: bewerkPrio });
+    setBewerkId(null);
+  };
+
+  const gefilterdeItems = (todos || []).filter(todo => {
+    if (filter === "open")  return !todo.gedaan;
+    if (filter === "gedaan") return  todo.gedaan;
+    return true;
+  }).sort((a, b) => {
+    // Hoog prioriteit bovenaan, dan op aanmaakdatum
+    const prioOrder = { hoog: 0, middel: 1, laag: 2 };
+    const pa = prioOrder[a.prioriteit] ?? 1;
+    const pb = prioOrder[b.prioriteit] ?? 1;
+    if (pa !== pb) return pa - pb;
+    return (b.aangemaakt || "").localeCompare(a.aangemaakt || "");
+  });
+
+  const aantalOpen   = (todos || []).filter(t => !t.gedaan).length;
+  const aantalGedaan = (todos || []).filter(t =>  t.gedaan).length;
+
+  return (
+    <div>
+      <SectionTitle>📝 Taken & To-do lijst</SectionTitle>
+
+      {/* Teller badges */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <Badge color={C.pink}>{aantalOpen} open</Badge>
+        <Badge color={C.green}>{aantalGedaan} gedaan</Badge>
+      </div>
+
+      {/* Nieuwe taak invoer */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <input
+              placeholder="Nieuwe taak toevoegen..."
+              value={nieuweTekst}
+              onChange={e => setNieuweTekst(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && voegToe()}
+              style={{ ...inputStyle, marginBottom: 0 }}
+              onFocus={e => e.target.style.borderColor = C.pink}
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+            />
+          </div>
+          <div>
+            <select
+              value={nieuwePrio}
+              onChange={e => setNieuwePrio(e.target.value)}
+              style={{
+                ...inputStyle, width: "auto", background: "#1a0635", marginBottom: 0,
+                appearance: "none", paddingRight: 28,
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c8a8e9' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
+              }}
+            >
+              {TODO_PRIO.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <Btn onClick={voegToe} variant="primary">+ Toevoegen</Btn>
+        </div>
+      </Card>
+
+      {/* Filter knoppen */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[
+          { id: "open",   label: "📋 Open" },
+          { id: "gedaan", label: "✅ Gedaan" },
+          { id: "alles",  label: "📁 Alles" },
+        ].map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)} style={{
+            padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 700,
+            border: filter === f.id ? `1px solid ${C.pink}` : "1px solid rgba(255,255,255,0.12)",
+            background: filter === f.id ? `rgba(232,121,249,0.15)` : "transparent",
+            color: filter === f.id ? C.pink : C.muted, cursor: "pointer", fontFamily: "inherit",
+          }}>{f.label}</button>
+        ))}
+      </div>
+
+      {/* Taken lijst */}
+      {gefilterdeItems.length === 0 ? (
+        <EmptyState icon={filter === "gedaan" ? "✅" : "📝"} text={filter === "gedaan" ? "Nog niets afgerond" : "Geen open taken — goed bezig! 🎉"} />
+      ) : (
+        gefilterdeItems.map(todo => {
+          const prioInfo = TODO_PRIO.find(p => p.value === (todo.prioriteit || "middel"));
+          const isBewerk = bewerkId === todo.id;
+          return (
+            <Card key={todo.id} style={{ marginBottom: 8, opacity: todo.gedaan ? 0.6 : 1 }}>
+              {isBewerk ? (
+                <div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                    <input
+                      value={bewerkTekst}
+                      onChange={e => setBewerkTekst(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && slaBewerk()}
+                      style={{ ...inputStyle, flex: 1, minWidth: 140, marginBottom: 0 }}
+                      autoFocus
+                      onFocus={e => e.target.style.borderColor = C.pink}
+                      onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+                    />
+                    <select
+                      value={bewerkPrio}
+                      onChange={e => setBewerkPrio(e.target.value)}
+                      style={{
+                        ...inputStyle, width: "auto", background: "#1a0635", marginBottom: 0,
+                        appearance: "none", paddingRight: 28,
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c8a8e9' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                        backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
+                      }}
+                    >
+                      {TODO_PRIO.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn small onClick={slaBewerk}>💾 Opslaan</Btn>
+                    <Btn small variant="secondary" onClick={() => setBewerkId(null)}>Annuleer</Btn>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  {/* Checkbox */}
+                  <button onClick={() => onToggle(todo.id)} style={{
+                    flexShrink: 0, width: 26, height: 26, borderRadius: 8,
+                    border: `2px solid ${todo.gedaan ? C.green : "rgba(255,255,255,0.25)"}`,
+                    background: todo.gedaan ? C.green + "33" : "transparent",
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    marginTop: 1,
+                  }}>
+                    {todo.gedaan && <span style={{ fontSize: 14, color: C.green }}>✓</span>}
+                  </button>
+
+                  {/* Tekst + metadata */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 15, fontWeight: 600, color: todo.gedaan ? C.muted : C.text,
+                      textDecoration: todo.gedaan ? "line-through" : "none",
+                      wordBreak: "break-word",
+                    }}>{todo.tekst}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: prioInfo?.color, fontWeight: 700 }}>{prioInfo?.label}</span>
+                      {todo.aangemaakt && (
+                        <span style={{ fontSize: 11, color: C.muted }}>
+                          {new Date(todo.aangemaakt).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                        </span>
+                      )}
+                      {todo.gedaan && todo.afgerondOp && (
+                        <span style={{ fontSize: 11, color: C.green }}>
+                          ✓ {new Date(todo.afgerondOp).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Acties */}
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    {!todo.gedaan && (
+                      <Btn small variant="secondary" onClick={() => startBewerk(todo)}>✏️</Btn>
+                    )}
+                    <Btn small variant="danger" onClick={() => onDelete(todo.id)}>🗑️</Btn>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -2648,6 +2851,7 @@ export default function App() {
   const [afspraken, setAfspraken] = useState([]);
   const [nucConfig, setNucConfigState] = useState(() => getNucConfig());
   const [facturen, setFacturen] = useState([]);
+  const [todos, setTodos] = useState([]);
   const [salonInst, setSalonInst] = useState({
     naam: "Gewoon bij Isolde", adres: "", postcode: "", stad: "",
     kvk: "", btwNummer: "", iban: "", betalingstermijn: "14",
@@ -2672,6 +2876,7 @@ export default function App() {
       if (db.nucConfig) { setNucConfigState(db.nucConfig); setNucConfig(db.nucConfig); }
       if (db.salonInst) setSalonInst(s => ({ ...s, ...db.salonInst }));
       if (db.facturen) setFacturen(db.facturen);
+      if (db.todos) setTodos(db.todos);
       setLoading(false);
     })();
 
@@ -2688,6 +2893,7 @@ export default function App() {
       if (nieuweData.nucConfig) { setNucConfigState(nieuweData.nucConfig); setNucConfig(nieuweData.nucConfig); }
       if (nieuweData.salonInst) setSalonInst(s => ({ ...s, ...nieuweData.salonInst }));
       if (nieuweData.facturen) setFacturen(nieuweData.facturen);
+      if (nieuweData.todos) setTodos(nieuweData.todos);
       showToast("🔄 Data bijgewerkt");
     });
 
@@ -2982,6 +3188,38 @@ export default function App() {
     showToast("✓ NUC instellingen opgeslagen & gesynchroniseerd");
   };
 
+  // ── Todo handlers ─────────────────────────────────────────────────────────
+  const addTodo = async ({ tekst, prioriteit }) => {
+    const item = { id: uid(), tekst, prioriteit, gedaan: false, aangemaakt: new Date().toISOString() };
+    const updated = [...(dbRef.current.todos || []), item];
+    setTodos(updated);
+    await persist({ todos: updated });
+    showToast("✓ Taak toegevoegd");
+  };
+
+  const toggleTodo = async (id) => {
+    const now = new Date().toISOString();
+    const updated = (dbRef.current.todos || []).map(t =>
+      t.id === id ? { ...t, gedaan: !t.gedaan, afgerondOp: !t.gedaan ? now : null } : t
+    );
+    setTodos(updated);
+    await persist({ todos: updated });
+  };
+
+  const deleteTodo = async (id) => {
+    const updated = (dbRef.current.todos || []).filter(t => t.id !== id);
+    setTodos(updated);
+    await persist({ todos: updated });
+    showToast("Taak verwijderd");
+  };
+
+  const editTodo = async (id, velden) => {
+    const updated = (dbRef.current.todos || []).map(t => t.id === id ? { ...t, ...velden } : t);
+    setTodos(updated);
+    await persist({ todos: updated });
+    showToast("✓ Taak bijgewerkt");
+  };
+
   const voltooiAfspraak = async (afspraak) => {
     // Markeer als voltooid
     const bijgewerkt = { ...afspraak, status: "voltooid" };
@@ -3015,6 +3253,7 @@ export default function App() {
     { id: "kleuren",   icon: "🎨", label: "Kleuren" },
     { id: "facturen",  icon: "🧾", label: "Facturen" },
     { id: "stempels",  icon: "💳", label: "Stempels" },
+    { id: "todos",     icon: "✅", label: "Taken" },
     { id: "btw",       icon: "📊", label: "BTW" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -3058,6 +3297,7 @@ export default function App() {
     facturen:  <Facturen facturen={facturen} salonInst={salonInst}
                   onDelete={deleteFactuurHandler} onEdit={editFactuurHandler} onDownload={downloadFactuur} />,
     stempels:  <Stempelkaart klanten={klanten} onStempel={geefStempel} />,
+    todos:     <TodoLijst todos={todos} onAdd={addTodo} onToggle={toggleTodo} onDelete={deleteTodo} onEdit={editTodo} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
