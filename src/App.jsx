@@ -104,7 +104,8 @@ const Input = ({ label, ...props }) => (
   <Field label={label}>
     <input {...props} style={{ ...inputStyle, ...props.style }}
       onFocus={e => e.target.style.borderColor = C.pink}
-      onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+      onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+      onWheel={e => e.target.blur()} />
   </Field>
 );
 
@@ -648,7 +649,8 @@ function Inkomsten({ data, prijslijst, klanten, onAdd, onDelete, onEdit, onMaakF
               onChange={e => set("prijs", e.target.value)} placeholder="0.00"
               style={{ ...inputStyle, flex: 1 }}
               onFocus={e => e.target.style.borderColor = C.pink}
-              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+              onWheel={e => e.target.blur()} />
             <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1.5px solid rgba(255,255,255,0.15)", flexShrink: 0 }}>
               {["incl", "excl"].map(m => (
                 <button key={m} onClick={() => setBtwModus(m)} type="button" style={{
@@ -824,7 +826,8 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
               onChange={e => set("bedrag", e.target.value)} placeholder="0.00"
               style={{ ...inputStyle, flex: 1 }}
               onFocus={e => e.target.style.borderColor = C.pink}
-              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+              onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"}
+              onWheel={e => e.target.blur()} />
             <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: "1.5px solid rgba(255,255,255,0.15)", flexShrink: 0 }}>
               {["incl", "excl"].map(m => (
                 <button key={m} onClick={() => setBtwModus(m)} type="button" style={{
@@ -3630,6 +3633,9 @@ export default function App() {
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; height: 0; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
         @media print {
           body * { visibility: hidden !important; }
           #print-planning, #print-planning * { visibility: visible !important; }
