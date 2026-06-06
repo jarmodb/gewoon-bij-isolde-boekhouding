@@ -1521,7 +1521,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           <div style={{ fontSize: 13, color: C.muted }}>{lijst.length} afspraak{lijst.length !== 1 ? "en" : ""}</div>
           <div style={{ display: "flex", gap: 8 }}>
             {!blok && <Btn small variant="secondary" onClick={() => openBlokModal(s)}>🔒 Blokkeren</Btn>}
-            <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>
+            {!blok && <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>}
           </div>
         </div>
         {lijst.length === 0
@@ -1845,7 +1845,7 @@ const KWARTALEN = [
   { q: "Q4", label: "Kwartaal 4", periode: "Okt – Dec", maanden: [9,10,11] },
 ];
 
-function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst }) {
+function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
   const huidigJaar = new Date().getFullYear();
   const jaren = [...new Set([
     ...inkomsten.map(x => new Date(x.datum).getFullYear()),
@@ -1899,7 +1899,14 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst }) {
     const kosten = uitgaven
       .filter(x => new Date(x.datum).getFullYear() === jaar)
       .reduce((s, x) => s + (x.bedragExcl || 0), 0);
-    const brutoWinst = omzet - kosten;
+
+    // Zakelijke km-aftrek (€0,23/km forfaitair — dit vervangt werkelijke autokosten)
+    const zakelijkeKm = (ritten || [])
+      .filter(r => new Date(r.datum).getFullYear() === jaar && r.type === "Zakelijk")
+      .reduce((s, r) => s + (r.km || 0), 0);
+    const kmAftrek = +(zakelijkeKm * 0.23).toFixed(2);
+
+    const brutoWinst = omzet - kosten - kmAftrek;
 
     const zelfstandigenaftrek = urenOk ? (jaar >= 2026 ? 1200 : 2470) : 0;
     const startersaftrek = (urenOk && isStarter) ? 2123 : 0;
@@ -1914,7 +1921,7 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst }) {
     const margTarief = marginaalTarief(salaris + belastbareWinst / 2);
     const zvwBijdrage = belastbareWinst * 0.0485;
 
-    return { omzet, kosten, brutoWinst, zelfstandigenaftrek, startersaftrek,
+    return { omzet, kosten, kmAftrek, zakelijkeKm, brutoWinst, zelfstandigenaftrek, startersaftrek,
       winstNaOndAftrek, mkbVrijstelling, belastbareWinst,
       belastingOpWinst, margTarief, zvwBijdrage, totaalExtra: belastingOpWinst + zvwBijdrage };
   })();
@@ -1984,13 +1991,19 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst }) {
             {[
               ["Omzet (excl. BTW)", ibBerekening.omzet, C.green],
               ["Zakelijke kosten (excl. BTW)", -ibBerekening.kosten, C.red],
+              ibBerekening.kmAftrek > 0 ? [`Km-aftrek (${ibBerekening.zakelijkeKm.toFixed(0)} km × €0,23)`, -ibBerekening.kmAftrek, C.orange] : null,
               ["= Bruto winst", ibBerekening.brutoWinst, ibBerekening.brutoWinst >= 0 ? "#fff" : C.red],
-            ].map(([label, val, color]) => (
+            ].filter(Boolean).map(([label, val, color]) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: C.muted }}>{label}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color }}>{val < 0 ? `- ${fmt(Math.abs(val))}` : fmt(val)}</span>
               </div>
             ))}
+            {ibBerekening.kmAftrek > 0 && (
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                💡 Forfaitaire km-aftrek. Zorg dat je geen werkelijke autokosten ook in uitgaven hebt staan.
+              </div>
+            )}
           </Card>
 
           {/* Aftrekposten */}
@@ -3865,7 +3878,7 @@ export default function App() {
     todos:     <TodoLijst todos={todos} onAdd={addTodo} onToggle={toggleTodo} onDelete={deleteTodo} onEdit={editTodo} />,
     bestellen: <Bestellijst items={bestellijst} onAdd={addBestelling} onToggle={toggleBestelling} onDelete={deleteBestelling} onEdit={editBestelling} />,
     kilometers: <KilometerRegistratie ritten={ritten} onAdd={addRit} onDelete={deleteRit} onEdit={editRit} />,
-    btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} />,
+    btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} ritten={ritten} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
