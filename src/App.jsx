@@ -1244,9 +1244,9 @@ function KleurenArchief({ data, onAdd, onDelete, onEdit }) {
           { key: "beoordeling", label: "Beoordeling", options: BEOORDELINGEN },
         ].map(({ key, label, options }) => (
           <select key={key} value={filter[key]} onChange={e => setFilter(f => ({ ...f, [key]: e.target.value }))}
-            style={{ background: filter[key] ? "#e879f930" : "rgba(255,255,255,0.07)",
-              border: `1px solid ${filter[key] ? C.pink : "rgba(255,255,255,0.12)"}`,
-              borderRadius: 10, padding: "7px 12px", color: filter[key] ? C.pink : C.muted,
+            style={{ background: filter[key] ? "rgba(232,121,249,0.15)" : "#1a0635",
+              border: `1px solid ${filter[key] ? C.pink : "rgba(255,255,255,0.18)"}`,
+              borderRadius: 10, padding: "7px 12px", color: filter[key] ? C.pink : "#fff",
               fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
               whiteSpace: "nowrap", flexShrink: 0, appearance: "none" }}>
             <option value="">{label}</option>
