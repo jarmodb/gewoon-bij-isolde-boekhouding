@@ -37,6 +37,27 @@ Ga in de app naar **Meer → Bewijsstukken** en vul in:
 - Server URL: `https://jouw-nuc.staartje-xxxxx.ts.net`
 - API-key: het wachtwoord dat je in `.env` hebt ingevuld
 
+## Planning koppelen aan Google Agenda
+
+De server biedt een agenda-feed (.ics) met alle afspraken en geblokkeerde dagen
+uit de planning. Google Agenda kan zich hierop abonneren en ververst dit zelf
+automatisch (meestal binnen een paar uur na elke wijziging).
+
+### Eenmalig instellen
+1. Vul in `.env` een eigen `AGENDA_TOKEN` in (bijv. `isolde-agenda-2026-geheim`).
+   Dit is een apart wachtwoord, los van `API_KEY` — alleen voor de agenda-link.
+2. Herstart de server (`pm2 restart isolde-upload` of opnieuw opstarten).
+3. De abonnee-link is:
+   `https://jouw-nuc.staartje-xxxxx.ts.net/agenda.ics?token=isolde-agenda-2026-geheim`
+4. Open Google Agenda op de computer (calendar.google.com) → links onder
+   "Andere agenda's" op het **+** klikken → **Op URL abonneren** → plak de link → Toevoegen.
+5. Klaar! Nieuwe en gewijzigde afspraken verschijnen vanzelf in de agenda
+   (Google ververst abonnementen periodiek, dit kan tot enkele uren duren —
+   niet direct zoals bij een live-koppeling).
+
+Let op: dit werkt alleen van de planning-app náár Google Agenda (eenrichtingsverkeer).
+Afspraken die rechtstreeks in Google Agenda worden gezet, komen niet in de app.
+
 ## Automatisch opstarten met Windows
 
 Maak een snelkoppeling naar `start.bat` en zet die in:

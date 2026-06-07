@@ -24,6 +24,15 @@ const PORT       = process.env.PORT       || 3747;
 const API_KEY    = process.env.API_KEY    || "verander-dit-naar-een-geheim-wachtwoord";
 const UPLOAD_MAP = process.env.UPLOAD_MAP || path.join(__dirname, "uploads");
 
+// Apart geheim voor de Google Agenda-feed (los van de upload API-key, want
+// deze link wordt gedeeld met Google en mag dus niet de uploadfunctie kunnen misbruiken)
+const AGENDA_TOKEN = process.env.AGENDA_TOKEN || "verander-dit-agenda-token";
+
+// Supabase — zelfde (publieke) project-gegevens als in src/storage.js, alleen-lezen gebruikt
+const SUPABASE_URL      = "https://djueprzazwzwskdrqtgm.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqdWVwcnphend6d3NrZHJxdGdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzM3OTcsImV4cCI6MjA5NTkwOTc5N30.GvjNwW0yMQhGwaqdyeiLqlElhPQk3JMo0eix4Cd0nQw";
+
 // Uploadmap aanmaken — niet fataal als NAS nog niet gemount is bij opstarten
 try {
   fs.mkdirSync(UPLOAD_MAP, { recursive: true });
@@ -46,7 +55,7 @@ app.use((req, res, next) => {
 
 // API-key authenticatie (header voor uploads, query param voor bestandsweergave)
 app.use((req, res, next) => {
-  if (req.path === "/health") return next();
+  if (req.path === "/health" || req.path === "/agenda.ics") return next();
   const keyHeader = req.headers["x-api-key"];
   const keyQuery  = req.query.key;
   if (keyHeader !== API_KEY && keyQuery !== API_KEY) {
@@ -91,6 +100,130 @@ app.post("/upload", upload.single("bestand"), (req, res) => {
   const relativePad = path.join(req.body.pad || "", req.file.filename).replace(/\\/g, "/");
   console.log(`✓ Opgeslagen: ${relativePad}`);
   res.json({ pad: relativePad, ok: true });
+});
+
+// ── Google Agenda-feed (.ics) ─────────────────────────────────────────────────
+// Eenmalig in Google Agenda toevoegen via "Andere agenda's" → "Op URL abonneren":
+//   https://<jouw-funnel-url>/agenda.ics?token=<AGENDA_TOKEN>
+// Google ververst zo'n abonnement automatisch (meestal binnen enkele uren).
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// "2026-06-07" + "10:00" (lokale NL-tijd) → "20260607T080000Z" (UTC, voor ICS)
+// Werkt automatisch goed met zomer-/wintertijd omdat de NUC in Europe/Amsterdam draait.
+function naarIcsTijd(datumStr, tijdStr) {
+  const d = new Date(`${datumStr}T${tijdStr}:00`);
+  return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
+    + "T" + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + "Z";
+}
+
+// "2026-06-07" → "20260607" (voor hele-dag-events)
+const naarIcsDatum = (datumStr) => datumStr.replace(/-/g, "");
+
+// Volgende kalenderdag als "YYYY-MM-DD" (DTEND bij hele-dag-events is exclusief)
+function volgendeDag(datumStr) {
+  const d = new Date(`${datumStr}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+
+// Speciale tekens escapen volgens RFC 5545
+function icsEscape(str) {
+  return String(str || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
+app.get("/agenda.ics", async (req, res) => {
+  if (req.query.token !== AGENDA_TOKEN) {
+    return res.status(401).send("Ongeldig token");
+  }
+
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/boekhouding?id=eq.1&select=data`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!resp.ok) throw new Error(`Supabase gaf status ${resp.status}`);
+    const rows = await resp.json();
+    const data = rows?.[0]?.data || {};
+    const afspraken  = Array.isArray(data.afspraken)   ? data.afspraken   : [];
+    const geblokkeerd = Array.isArray(data.geblokkeerd) ? data.geblokkeerd : [];
+
+    const nu = naarIcsTijd(
+      new Date().toISOString().slice(0, 10),
+      `${pad2(new Date().getUTCHours())}:${pad2(new Date().getUTCMinutes())}`
+    );
+
+    const regels = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Gewoon bij Isolde//Planning//NL",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      "X-WR-CALNAME:Gewoon bij Isolde — Planning",
+      "X-WR-TIMEZONE:Europe/Amsterdam",
+    ];
+
+    // Afspraken (geannuleerde afspraken niet meenemen)
+    afspraken
+      .filter(a => a.status !== "geannuleerd" && a.datum && a.tijdstip)
+      .forEach(a => {
+        const start = naarIcsTijd(a.datum, a.tijdstip);
+        const eindeDatum = new Date(`${a.datum}T${a.tijdstip}:00`);
+        eindeDatum.setMinutes(eindeDatum.getMinutes() + (Number(a.duurMinuten) || 60));
+        const eind = naarIcsTijd(
+          `${eindeDatum.getFullYear()}-${pad2(eindeDatum.getMonth() + 1)}-${pad2(eindeDatum.getDate())}`,
+          `${pad2(eindeDatum.getHours())}:${pad2(eindeDatum.getMinutes())}`
+        );
+        const titel = [a.klantNaam, a.behandeling].filter(Boolean).join(" — ") || "Afspraak";
+        const beschrijving = [
+          a.behandeling ? `Behandeling: ${a.behandeling}` : null,
+          a.prijsIndicatie ? `Prijsindicatie: €${a.prijsIndicatie}` : null,
+          a.notities ? `Notities: ${a.notities}` : null,
+          a.status === "voltooid" ? "Status: voltooid" : null,
+        ].filter(Boolean).join("\\n");
+
+        regels.push(
+          "BEGIN:VEVENT",
+          `UID:afspraak-${a.id}@gewoonbijisolde`,
+          `DTSTAMP:${nu}`,
+          `DTSTART:${start}`,
+          `DTEND:${eind}`,
+          `SUMMARY:${icsEscape(titel)}`,
+          beschrijving ? `DESCRIPTION:${icsEscape(beschrijving)}` : null,
+          "END:VEVENT"
+        );
+      });
+
+    // Geblokkeerde dagen (vakantie/cursus/ziek/overig) als hele-dag-events
+    geblokkeerd
+      .filter(b => b.van && b.tot)
+      .forEach(b => {
+        const titel = `🔒 ${b.type || "Geblokkeerd"}${b.reden ? ` — ${b.reden}` : ""}`;
+        regels.push(
+          "BEGIN:VEVENT",
+          `UID:blok-${b.id}@gewoonbijisolde`,
+          `DTSTAMP:${nu}`,
+          `DTSTART;VALUE=DATE:${naarIcsDatum(b.van)}`,
+          `DTEND;VALUE=DATE:${naarIcsDatum(volgendeDag(b.tot))}`,
+          `SUMMARY:${icsEscape(titel)}`,
+          "TRANSP:TRANSPARENT",
+          "END:VEVENT"
+        );
+      });
+
+    regels.push("END:VCALENDAR");
+
+    res.set("Content-Type", "text/calendar; charset=utf-8");
+    res.set("Content-Disposition", "inline; filename=\"gewoon-bij-isolde-planning.ics\"");
+    res.send(regels.filter(Boolean).join("\r\n"));
+  } catch (e) {
+    console.error("Agenda-feed genereren mislukt:", e.message);
+    res.status(500).send("Agenda-feed genereren mislukt");
+  }
 });
 
 // Zoek browser: eerst puppeteer cache, dan systeem Chrome/Edge

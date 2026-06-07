@@ -2557,7 +2557,64 @@ function NucInstellingen({ config, onUpdate }) {
           <Input label="API-key (wachtwoord uit .env)"
             value={form.apiKey || ""} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
             placeholder="nagels2026geheim" />
+          <Input label="Agenda-token (optioneel — voor Google Agenda koppeling, AGENDA_TOKEN uit .env)"
+            value={form.agendaToken || ""} onChange={e => setForm(f => ({ ...f, agendaToken: e.target.value }))}
+            placeholder="isolde-agenda-2026-geheim" />
           <Btn onClick={opslaan} fullWidth disabled={!form.serverUrl || !form.apiKey}>Opslaan</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ── Google Agenda koppeling ───────────────────────────────────────────────────
+function GoogleAgendaKoppeling({ config }) {
+  const [gekopieerd, setGekopieerd] = useState(false);
+  const agendaUrl = (config?.serverUrl && config?.agendaToken)
+    ? `${config.serverUrl.replace(/\/$/, "")}/agenda.ics?token=${encodeURIComponent(config.agendaToken)}`
+    : null;
+
+  const kopieer = async () => {
+    if (!agendaUrl) return;
+    try {
+      await navigator.clipboard.writeText(agendaUrl);
+      setGekopieerd(true);
+      setTimeout(() => setGekopieerd(false), 2000);
+    } catch {}
+  };
+
+  return (
+    <Card style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.2)" }}>
+      <SectionTitle style={{ marginBottom: 12 }}>📅 Koppeling met Google Agenda</SectionTitle>
+      {!agendaUrl ? (
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+          Vul hierboven bij <b>Bewijsstukken (NUC)</b> ook een <b>Agenda-token</b> in
+          (zelfde token als <span style={{ color: "#60a5fa" }}>AGENDA_TOKEN</span> in
+          het <span style={{ color: "#60a5fa" }}>.env</span>-bestand van de upload-server)
+          om automatisch een abonnee-link voor Google Agenda te krijgen.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, marginBottom: 10 }}>
+            Met onderstaande link kan Google Agenda zich automatisch abonneren op de
+            planning. Nieuwe en gewijzigde afspraken (en geblokkeerde dagen) verschijnen
+            dan vanzelf in de agenda — Google ververst dit periodiek (kan tot enkele uren duren).
+          </div>
+          <div style={{ fontSize: 11, color: "#e2d0f8", fontFamily: "monospace", wordBreak: "break-all",
+            background: "rgba(255,255,255,0.05)", padding: 10, borderRadius: 8, marginBottom: 10 }}>
+            {agendaUrl}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+            <Btn small variant="secondary" onClick={kopieer}>📋 Link kopiëren</Btn>
+            {gekopieerd && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ Gekopieerd!</span>}
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
+            <b style={{ color: "#fff" }}>Zo voeg je 'm toe in Google Agenda:</b><br />
+            1. Open <span style={{ color: "#60a5fa" }}>calendar.google.com</span> op een computer<br />
+            2. Klik links bij "Andere agenda's" op <b>+</b> → <b>Op URL abonneren</b><br />
+            3. Plak de gekopieerde link → <b>Agenda toevoegen</b><br />
+            4. Klaar! De planning verschijnt voortaan automatisch in de agenda.
+          </div>
         </>
       )}
     </Card>
@@ -2826,6 +2883,9 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
 
       {/* NUC bewijsstukken instellingen */}
       <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
+
+      {/* Google Agenda koppeling (gebruikt dezelfde NUC-server) */}
+      <GoogleAgendaKoppeling config={nucConfig} />
 
       <ConfirmDialog
         open={confirmVerwijder !== null}
