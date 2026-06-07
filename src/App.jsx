@@ -2624,7 +2624,7 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
         <>
           <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, marginBottom: 10 }}>
             Met onderstaande link kan Google Agenda zich automatisch abonneren op de
-            planning. Nieuwe en gewijzigde afspraken (en geblokkeerde dagen) verschijnen
+            planning. Nieuwe en gewijzigde afspraken verschijnen
             dan vanzelf in de agenda — Google ververst dit periodiek (kan tot enkele uren duren).
           </div>
           <div style={{ fontSize: 11, color: "#e2d0f8", fontFamily: "monospace", wordBreak: "break-all",

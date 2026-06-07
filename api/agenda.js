@@ -1,6 +1,7 @@
 // ── Gewoon bij Isolde — Google Agenda-feed (.ics) ───────────────────────────
-// Vercel serverless function. Genereert een live iCalendar-feed (afspraken +
-// geblokkeerde dagen) op basis van de planning-data in Supabase.
+// Vercel serverless function. Genereert een live iCalendar-feed met de
+// (niet-geannuleerde) afspraken uit de planning, op basis van de data in Supabase.
+// Geblokkeerde dagen (vakantie/cursus/ziek) worden bewust niet meegenomen.
 //
 // URL:  https://<jouw-site>.vercel.app/api/agenda?token=<AGENDA_TOKEN>
 //
@@ -49,16 +50,6 @@ function lokaalNaarUtc(datumStr, tijdStr) {
 }
 
 // "2026-06-07" → "20260607" (voor hele-dag-events)
-const naarIcsDatum = (datumStr) => datumStr.replace(/-/g, "");
-
-// Volgende kalenderdag als "YYYY-MM-DD" (DTEND bij hele-dag-events is exclusief).
-// Pure UTC-datumberekening, dus onafhankelijk van de servertijdzone.
-function volgendeDag(datumStr) {
-  const [j, m, d] = datumStr.split("-").map(Number);
-  const volgende = new Date(Date.UTC(j, m - 1, d) + 24 * 60 * 60 * 1000);
-  return volgende.getUTCFullYear() + "-" + pad2(volgende.getUTCMonth() + 1) + "-" + pad2(volgende.getUTCDate());
-}
-
 // Speciale tekens escapen volgens RFC 5545
 function icsEscape(str) {
   return String(str || "")
@@ -88,8 +79,7 @@ module.exports = async (req, res) => {
     if (!resp.ok) throw new Error(`Supabase gaf status ${resp.status}`);
     const rows = await resp.json();
     const data = rows?.[0]?.data || {};
-    const afspraken   = Array.isArray(data.afspraken)   ? data.afspraken   : [];
-    const geblokkeerd = Array.isArray(data.geblokkeerd) ? data.geblokkeerd : [];
+    const afspraken = Array.isArray(data.afspraken) ? data.afspraken : [];
 
     const nu = formatIcsUtc(new Date());
 
@@ -125,23 +115,6 @@ module.exports = async (req, res) => {
           `DTEND:${formatIcsUtc(eind)}`,
           `SUMMARY:${icsEscape(titel)}`,
           beschrijving ? `DESCRIPTION:${icsEscape(beschrijving)}` : null,
-          "END:VEVENT"
-        );
-      });
-
-    // Geblokkeerde dagen (vakantie/cursus/ziek/overig) als hele-dag-events
-    geblokkeerd
-      .filter(b => b.van && b.tot)
-      .forEach(b => {
-        const titel = `🔒 ${b.type || "Geblokkeerd"}${b.reden ? ` — ${b.reden}` : ""}`;
-        regels.push(
-          "BEGIN:VEVENT",
-          `UID:blok-${b.id}@gewoonbijisolde`,
-          `DTSTAMP:${nu}`,
-          `DTSTART;VALUE=DATE:${naarIcsDatum(b.van)}`,
-          `DTEND;VALUE=DATE:${naarIcsDatum(volgendeDag(b.tot))}`,
-          `SUMMARY:${icsEscape(titel)}`,
-          "TRANSP:TRANSPARENT",
           "END:VEVENT"
         );
       });
