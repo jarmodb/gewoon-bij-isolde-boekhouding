@@ -2557,9 +2557,6 @@ function NucInstellingen({ config, onUpdate }) {
           <Input label="API-key (wachtwoord uit .env)"
             value={form.apiKey || ""} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
             placeholder="nagels2026geheim" />
-          <Input label="Agenda-token (optioneel — voor Google Agenda koppeling, AGENDA_TOKEN uit .env)"
-            value={form.agendaToken || ""} onChange={e => setForm(f => ({ ...f, agendaToken: e.target.value }))}
-            placeholder="isolde-agenda-2026-geheim" />
           <Btn onClick={opslaan} fullWidth disabled={!form.serverUrl || !form.apiKey}>Opslaan</Btn>
         </>
       )}
@@ -2568,11 +2565,25 @@ function NucInstellingen({ config, onUpdate }) {
 }
 
 // ── Google Agenda koppeling ───────────────────────────────────────────────────
-function GoogleAgendaKoppeling({ config }) {
+// Werkt volledig via Vercel (geen NUC/server nodig): de feed wordt gegenereerd
+// door een serverless function op /api/agenda, beveiligd met een geheim token
+// dat in Vercel als omgevingsvariabele AGENDA_TOKEN staat.
+function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
+  const [bewerken, setBewerken] = useState(false);
+  const [tokenInvoer, setTokenInvoer] = useState(salonInst?.agendaToken || "");
   const [gekopieerd, setGekopieerd] = useState(false);
-  const agendaUrl = (config?.serverUrl && config?.agendaToken)
-    ? `${config.serverUrl.replace(/\/$/, "")}/agenda.ics?token=${encodeURIComponent(config.agendaToken)}`
+
+  useEffect(() => setTokenInvoer(salonInst?.agendaToken || ""), [salonInst?.agendaToken]);
+
+  const token = salonInst?.agendaToken || "";
+  const agendaUrl = token
+    ? `${window.location.origin}/api/agenda?token=${encodeURIComponent(token)}`
     : null;
+
+  const opslaan = () => {
+    onUpdate({ ...salonInst, agendaToken: tokenInvoer.trim() });
+    setBewerken(false);
+  };
 
   const kopieer = async () => {
     if (!agendaUrl) return;
@@ -2585,13 +2596,29 @@ function GoogleAgendaKoppeling({ config }) {
 
   return (
     <Card style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.2)" }}>
-      <SectionTitle style={{ marginBottom: 12 }}>📅 Koppeling met Google Agenda</SectionTitle>
-      {!agendaUrl ? (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <SectionTitle>📅 Koppeling met Google Agenda</SectionTitle>
+        <Btn small variant="secondary" onClick={() => { setTokenInvoer(token); setBewerken(!bewerken); }}>
+          {bewerken ? "Annuleren" : token ? "✏️ Bewerken" : "Instellen"}
+        </Btn>
+      </div>
+
+      {bewerken ? (
+        <>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, marginBottom: 8 }}>
+            Verzin een geheim wachtwoord (token) en zet <i>precies hetzelfde</i> woord
+            ook als omgevingsvariabele <span style={{ color: "#60a5fa" }}>AGENDA_TOKEN</span> in
+            de Vercel-projectinstellingen (Settings → Environment Variables).
+          </div>
+          <Input label="Agenda-token" value={tokenInvoer} onChange={e => setTokenInvoer(e.target.value)}
+            placeholder="isolde-agenda-2026-geheim" />
+          <Btn onClick={opslaan} fullWidth disabled={!tokenInvoer.trim()}>Opslaan</Btn>
+        </>
+      ) : !agendaUrl ? (
         <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-          Vul hierboven bij <b>Bewijsstukken (NUC)</b> ook een <b>Agenda-token</b> in
-          (zelfde token als <span style={{ color: "#60a5fa" }}>AGENDA_TOKEN</span> in
-          het <span style={{ color: "#60a5fa" }}>.env</span>-bestand van de upload-server)
-          om automatisch een abonnee-link voor Google Agenda te krijgen.
+          Stel een agenda-token in om automatisch een abonnee-link voor Google Agenda
+          te krijgen — daarmee verschijnt de planning vanzelf in de agenda, zonder
+          dat daar een server (zoals de NUC) bij nodig is.
         </div>
       ) : (
         <>
@@ -2610,10 +2637,12 @@ function GoogleAgendaKoppeling({ config }) {
           </div>
           <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
             <b style={{ color: "#fff" }}>Zo voeg je 'm toe in Google Agenda:</b><br />
-            1. Open <span style={{ color: "#60a5fa" }}>calendar.google.com</span> op een computer<br />
+            1. Open <span style={{ color: "#60a5fa" }}>calendar.google.com</span> in de browser
+            (op een computer, of op de telefoon via "Desktopsite")<br />
             2. Klik links bij "Andere agenda's" op <b>+</b> → <b>Op URL abonneren</b><br />
             3. Plak de gekopieerde link → <b>Agenda toevoegen</b><br />
-            4. Klaar! De planning verschijnt voortaan automatisch in de agenda.
+            4. Klaar! De agenda verschijnt voortaan automatisch overal waar ze met
+            dit Google-account is ingelogd, dus ook in de Google Agenda-app op de telefoon.
           </div>
         </>
       )}
@@ -2884,8 +2913,8 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       {/* NUC bewijsstukken instellingen */}
       <NucInstellingen config={nucConfig} onUpdate={onUpdateNucConfig} />
 
-      {/* Google Agenda koppeling (gebruikt dezelfde NUC-server) */}
-      <GoogleAgendaKoppeling config={nucConfig} />
+      {/* Google Agenda koppeling (via Vercel serverless function, geen NUC nodig) */}
+      <GoogleAgendaKoppeling salonInst={salonInst} onUpdate={onUpdateSalonInst} />
 
       <ConfirmDialog
         open={confirmVerwijder !== null}
