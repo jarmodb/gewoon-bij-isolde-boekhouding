@@ -24,6 +24,11 @@ const PORT       = process.env.PORT       || 3747;
 const API_KEY    = process.env.API_KEY    || "verander-dit-naar-een-geheim-wachtwoord";
 const UPLOAD_MAP = process.env.UPLOAD_MAP || path.join(__dirname, "uploads");
 
+// Aparte alleen-lezen sleutel voor het delen van bewijsstukken (bijv. met de boekhouder).
+// Hiermee kan iemand bonnen bekijken/downloaden, maar nooit uploaden of wijzigen —
+// dat blijft voorbehouden aan API_KEY. Leeg laten = functie staat uit.
+const VIEWER_KEY = process.env.VIEWER_KEY || "";
+
 // Uploadmap aanmaken — niet fataal als NAS nog niet gemount is bij opstarten
 try {
   fs.mkdirSync(UPLOAD_MAP, { recursive: true });
@@ -49,6 +54,13 @@ app.use((req, res, next) => {
   if (req.path === "/health") return next();
   const keyHeader = req.headers["x-api-key"];
   const keyQuery  = req.query.key;
+
+  // Bewijsstukken mogen ook bekeken/gedownload worden met de alleen-lezen
+  // viewer-sleutel (bijv. gedeeld met de boekhouder) — geeft geen upload-rechten
+  if (req.path.startsWith("/bestand/") && VIEWER_KEY && (keyHeader === VIEWER_KEY || keyQuery === VIEWER_KEY)) {
+    return next();
+  }
+
   if (keyHeader !== API_KEY && keyQuery !== API_KEY) {
     return res.status(401).json({ error: "Ongeldige API-key" });
   }
@@ -163,11 +175,13 @@ app.post("/html-to-pdf", express.json({ limit: "8mb" }), async (req, res) => {
   }
 });
 
-// Bestand opvragen (voor inzage bon)
+// Bestand opvragen (voor inzage bon — gebruik ?download=1 om af te dwingen dat
+// de browser het bestand opslaat in plaats van direct te tonen)
 app.get("/bestand/*", (req, res) => {
   const relativePad = req.params[0];
   const volledigPad = path.join(UPLOAD_MAP, relativePad);
   if (!fs.existsSync(volledigPad)) return res.status(404).json({ error: "Niet gevonden" });
+  if (req.query.download) return res.download(volledigPad);
   res.sendFile(volledigPad);
 });
 

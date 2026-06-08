@@ -60,4 +60,20 @@ export function getBewijsstukUrl(pad) {
   return `${serverUrl.replace(/\/$/, "")}/bestand/${pad}?key=${encodeURIComponent(apiKey)}`;
 }
 
+// Link voor het delen van bewijsstukken met derden (bijv. de boekhouder).
+// Gebruikt bij voorkeur een aparte alleen-lezen "viewer-sleutel" — die geeft
+// nooit upload-rechten, in tegenstelling tot de gewone API-key. Is die niet
+// ingesteld, dan valt de link terug op de normale API-key (werkt nog steeds,
+// maar dan kan de ontvanger in theorie ook uploaden).
+// Met `download = true` dwingt de link af dat het bestand wordt gedownload
+// in plaats van direct geopend in de browser.
+export function getDeelbareBewijsstukUrl(pad, download = false) {
+  if (!pad) return null;
+  const { serverUrl, viewerKey, apiKey } = getNucConfig();
+  const sleutel = viewerKey || apiKey;
+  if (!serverUrl || !sleutel) return null;
+  const basis = `${serverUrl.replace(/\/$/, "")}/bestand/${pad}?key=${encodeURIComponent(sleutel)}`;
+  return download ? `${basis}&download=1` : basis;
+}
+
 export const WEBDAV_CONFIG = {};

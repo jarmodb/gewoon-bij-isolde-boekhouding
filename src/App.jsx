@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { loadAll, saveAll, subscribeToChanges } from "./storage.js";
-import { uploadNaarNAS, getBewijsstukUrl, getNucConfig, setNucConfig } from "./webdav.js";
+import { uploadNaarNAS, getBewijsstukUrl, getDeelbareBewijsstukUrl, getNucConfig, setNucConfig } from "./webdav.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TREATMENTS = [
@@ -2557,6 +2557,14 @@ function NucInstellingen({ config, onUpdate }) {
           <Input label="API-key (wachtwoord uit .env)"
             value={form.apiKey || ""} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
             placeholder="nagels2026geheim" />
+          <Input label="Viewer-sleutel (optioneel — alleen-lezen, voor delen met boekhouder, VIEWER_KEY uit .env)"
+            value={form.viewerKey || ""} onChange={e => setForm(f => ({ ...f, viewerKey: e.target.value }))}
+            placeholder="boekhouder-bonnen-2026" />
+          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, margin: "-4px 0 12px" }}>
+            Met een aparte viewer-sleutel kunnen bewijsstuk-links in de export
+            geopend worden zonder dat de ontvanger ook kan uploaden. Laat je dit
+            leeg, dan gebruiken die links de gewone API-key.
+          </div>
           <Btn onClick={opslaan} fullWidth disabled={!form.serverUrl || !form.apiKey}>Opslaan</Btn>
         </>
       )}
@@ -2672,6 +2680,21 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
     });
   };
 
+  // Maakt de cellen in een kolom klikbaar (hyperlink). `urls` is een array met
+  // dezelfde lengte/volgorde als `rows` — `null`/`undefined` slaat die rij over.
+  const voegLinksToe = (ws, rows, kolomNaam, urls) => {
+    const kolomIndex = Object.keys(rows[0] || {}).indexOf(kolomNaam);
+    if (kolomIndex === -1) return;
+    rows.forEach((_, i) => {
+      const url = urls[i];
+      if (!url) return;
+      const addr = XLSX.utils.encode_cell({ r: i + 1, c: kolomIndex });
+      if (!ws[addr]) return;
+      ws[addr].l = { Target: url, Tooltip: "Klik om te openen" };
+      ws[addr].s = { font: { color: { rgb: "2563EB" }, underline: true } };
+    });
+  };
+
   const autoWidth = (ws, rows) => {
     if (!rows.length) return;
     ws["!cols"] = Object.keys(rows[0]).map(k => ({
@@ -2705,13 +2728,20 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       XLSX.utils.book_append_sheet(wb, wsInc, "Inkomsten");
 
       // Uitgaven
-      const uitRows = [...uitgaven].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
+      const uitgavenSorted = [...uitgaven].sort((a, b) => new Date(a.datum) - new Date(b.datum));
+      const uitRows = uitgavenSorted.map((x, i) => ({
         "#": i + 1, "Datum": x.datum, "Categorie": x.categorie, "Omschrijving": x.omschrijving || "",
         "Leverancier": x.leverancier || "", "Betaalwijze": x.betaalwijze || "",
         "Excl. BTW": x.bedragExcl, "Incl. BTW": x.bedragIncl,
+        "Bewijsstuk bekijken": x.bonPad ? "📎 Bekijk bon" : "",
+        "Bewijsstuk downloaden": x.bonPad ? "⬇ Download bon" : "",
       }));
       const wsUit = XLSX.utils.json_to_sheet(uitRows.length ? uitRows : [{}]);
-      if (uitRows.length) { styleHeader(wsUit, Object.keys(uitRows[0])); autoWidth(wsUit, uitRows); }
+      if (uitRows.length) {
+        styleHeader(wsUit, Object.keys(uitRows[0])); autoWidth(wsUit, uitRows);
+        voegLinksToe(wsUit, uitRows, "Bewijsstuk bekijken", uitgavenSorted.map(x => getDeelbareBewijsstukUrl(x.bonPad)));
+        voegLinksToe(wsUit, uitRows, "Bewijsstuk downloaden", uitgavenSorted.map(x => getDeelbareBewijsstukUrl(x.bonPad, true)));
+      }
       XLSX.utils.book_append_sheet(wb, wsUit, "Uitgaven");
 
       // Jaren waarin daadwerkelijk data voorkomt (voorkomt dat bijv. januari 2025
@@ -2866,6 +2896,18 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
           {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(ritten || []).length} ritten · {kleuren.length} kleuren
         </div>
+        {nucConfig?.serverUrl && (nucConfig?.viewerKey || nucConfig?.apiKey) ? (
+          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, marginTop: 10 }}>
+            💡 In het tabblad "Uitgaven" staan klikbare links om bewijsstukken
+            direct te bekijken of te downloaden — handig om in één keer naar de
+            boekhouder te sturen.
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: C.orange, lineHeight: 1.6, marginTop: 10 }}>
+            ⚠️ Stel hieronder bij <b>Bewijsstukken (NUC)</b> de server in om
+            klikbare links naar bewijsstukken in de export op te nemen.
+          </div>
+        )}
       </Card>
 
       {/* Backup terugzetten */}
