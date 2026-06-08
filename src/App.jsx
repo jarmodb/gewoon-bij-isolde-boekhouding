@@ -2653,7 +2653,7 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2714,25 +2714,48 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       if (uitRows.length) { styleHeader(wsUit, Object.keys(uitRows[0])); autoWidth(wsUit, uitRows); }
       XLSX.utils.book_append_sheet(wb, wsUit, "Uitgaven");
 
-      // Maandoverzicht
-      const maandRows = MONTHS.map((m, mi) => {
-        const inc = inkomsten.filter(x => x.datum && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.prijs || 0), 0);
-        const uit = uitgaven.filter(x => x.datum && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.bedragIncl || 0), 0);
-        return { "Maand": m, "Inkomsten (€)": +inc.toFixed(2), "Uitgaven (€)": +uit.toFixed(2), "Winst/Verlies (€)": +(inc - uit).toFixed(2) };
-      });
+      // Jaren waarin daadwerkelijk data voorkomt (voorkomt dat bijv. januari 2025
+      // en januari 2026 worden opgeteld als ze allebei "Januari" heten)
+      const jarenMetData = [...new Set(
+        [...inkomsten, ...uitgaven]
+          .map(x => x.datum && new Date(x.datum).getFullYear())
+          .filter(j => j && !isNaN(j))
+      )].sort();
+      const jaren = jarenMetData.length ? jarenMetData : [new Date().getFullYear()];
+
+      // Maandoverzicht (per jaar + maand, zodat meerdere jaren niet door elkaar lopen)
+      const maandRows = jaren.flatMap(jaar => MONTHS.map((m, mi) => {
+        const inc = inkomsten.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.prijs || 0), 0);
+        const uit = uitgaven.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.bedragIncl || 0), 0);
+        return { "Jaar": jaar, "Maand": m, "Inkomsten (€)": +inc.toFixed(2), "Uitgaven (€)": +uit.toFixed(2), "Winst/Verlies (€)": +(inc - uit).toFixed(2) };
+      }));
       const wsMaand = XLSX.utils.json_to_sheet(maandRows);
       styleHeader(wsMaand, Object.keys(maandRows[0])); autoWidth(wsMaand, maandRows);
       XLSX.utils.book_append_sheet(wb, wsMaand, "Maandoverzicht");
 
-      // BTW overzicht
-      const btwRows = MONTHS.map((m, mi) => {
-        const ontvangen = inkomsten.filter(x => x.datum && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btw || 0), 0);
-        const betaald = uitgaven.filter(x => x.datum && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-        return { "Maand": m, "BTW ontvangen": +ontvangen.toFixed(2), "BTW betaald": +betaald.toFixed(2), "Te betalen belastingdienst": +(ontvangen - betaald).toFixed(2) };
-      });
+      // BTW overzicht (per jaar + maand)
+      const btwRows = jaren.flatMap(jaar => MONTHS.map((m, mi) => {
+        const ontvangen = inkomsten.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btw || 0), 0);
+        const betaald = uitgaven.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
+        return { "Jaar": jaar, "Maand": m, "BTW ontvangen": +ontvangen.toFixed(2), "BTW betaald": +betaald.toFixed(2), "Te betalen belastingdienst": +(ontvangen - betaald).toFixed(2) };
+      }));
       const wsBtw = XLSX.utils.json_to_sheet(btwRows);
       styleHeader(wsBtw, Object.keys(btwRows[0])); autoWidth(wsBtw, btwRows);
       XLSX.utils.book_append_sheet(wb, wsBtw, "BTW overzicht");
+
+      // Kilometerregistratie
+      if (ritten?.length) {
+        const kmRows = [...ritten].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
+          "#": i + 1, "Datum": x.datum, "Van": x.van || "", "Naar": x.naar || "",
+          "Omschrijving": x.omschrijving || "", "Type": x.type || "",
+          "Retour": x.retour ? "Ja" : "Nee",
+          "Km (enkele reis)": x.kmEnkelweg || "", "Km (totaal)": x.km || 0,
+          "Aftrek (€)": x.type === "Zakelijk" ? +((x.km || 0) * KM_VERGOEDING).toFixed(2) : 0,
+        }));
+        const wsKm = XLSX.utils.json_to_sheet(kmRows);
+        styleHeader(wsKm, Object.keys(kmRows[0])); autoWidth(wsKm, kmRows);
+        XLSX.utils.book_append_sheet(wb, wsKm, "Kilometers");
+      }
 
       // Klanten
       if (klanten.length) {
@@ -2835,13 +2858,13 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       <Card>
         <SectionTitle>Exporteren voor boekhouder</SectionTitle>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.7 }}>
-          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, maandoverzicht, BTW-overzicht, klanten, leveranciers én kleurenarchief.
+          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, maandoverzicht, BTW-overzicht, kilometers, klanten, leveranciers én kleurenarchief.
         </div>
         <Btn onClick={exportAlles} disabled={exporting} variant="success" fullWidth>
           {exporting ? "⏳ Bezig..." : "📥 Download boekhouding (.xlsx)"}
         </Btn>
         <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
-          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {kleuren.length} kleuren
+          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(ritten || []).length} ritten · {kleuren.length} kleuren
         </div>
       </Card>
 
@@ -4051,7 +4074,7 @@ export default function App() {
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} ritten={ritten} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
-                  leveranciers={leveranciers} kleuren={kleuren} syncStatus={syncStatus}
+                  leveranciers={leveranciers} kleuren={kleuren} ritten={ritten} syncStatus={syncStatus}
                   onRestoreBackup={restoreBackup}
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
