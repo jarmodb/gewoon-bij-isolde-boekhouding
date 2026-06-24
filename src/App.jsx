@@ -305,9 +305,14 @@ function Dashboard({ inkomsten, uitgaven, kleuren, afspraken, onNavigate }) {
   const besteMaxInc = Math.max(...Array.from({length:12},(_,i) => incVoorMaand(i, jaar)));
   const besteMaand = Array.from({length:12},(_,i) => ({ naam: MAAND_KORT[i], inc: incVoorMaand(i,jaar) })).find(m => m.inc === besteMaxInc);
 
-  // Vandaag afspraken
-  const vandaagAfspraken = (afspraken || []).filter(a => a.datum === TODAY && a.status !== "geannuleerd")
-    .sort((a,b) => a.tijdstip.localeCompare(b.tijdstip));
+  // Vandaag afspraken — alleen nog komende (of nu lopende) afspraken tonen
+  const nuMinuten = now.getHours() * 60 + now.getMinutes();
+  const vandaagAfspraken = (afspraken || []).filter(a => {
+    if (a.datum !== TODAY || a.status === "geannuleerd") return false;
+    const [u, m] = a.tijdstip.split(":").map(Number);
+    const eindMinuten = (u * 60 + m) + (parseInt(a.duurMinuten) || 60);
+    return eindMinuten > nuMinuten;
+  }).sort((a,b) => a.tijdstip.localeCompare(b.tijdstip));
 
   const behandelingCount = {};
   inkomsten.forEach(x => { if (x.behandeling) behandelingCount[x.behandeling] = (behandelingCount[x.behandeling] || 0) + 1; });
@@ -327,7 +332,7 @@ function Dashboard({ inkomsten, uitgaven, kleuren, afspraken, onNavigate }) {
         <Card style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", marginBottom: 12 }}
           onClick={() => onNavigate?.("planning")}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#818cf8", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
-            📅 Vandaag — {vandaagAfspraken.length} afspraak{vandaagAfspraken.length !== 1 ? "en" : ""}
+            📅 Vandaag — {vandaagAfspraken.length} {vandaagAfspraken.length !== 1 ? "afspraken" : "afspraak"}
           </div>
           {vandaagAfspraken.slice(0, 3).map(a => (
             <div key={a.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -1518,7 +1523,7 @@ function Planning({ afspraken, klanten, prijslijst, onAdd, onDelete, onEdit, onV
           </Card>
         )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 13, color: C.muted }}>{lijst.length} afspraak{lijst.length !== 1 ? "en" : ""}</div>
+          <div style={{ fontSize: 13, color: C.muted }}>{lijst.length} {lijst.length !== 1 ? "afspraken" : "afspraak"}</div>
           <div style={{ display: "flex", gap: 8 }}>
             {!blok && <Btn small variant="secondary" onClick={() => openBlokModal(s)}>🔒 Blokkeren</Btn>}
             {!blok && <Btn small onClick={() => openNieuw(s)}>+ Afspraak</Btn>}
@@ -2661,7 +2666,7 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2743,6 +2748,24 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
         voegLinksToe(wsUit, uitRows, "Bewijsstuk downloaden", uitgavenSorted.map(x => getDeelbareBewijsstukUrl(x.bonPad, true)));
       }
       XLSX.utils.book_append_sheet(wb, wsUit, "Uitgaven");
+
+      // Facturen
+      if (facturen?.length) {
+        const facturenSorted = [...facturen].sort((a, b) => new Date(a.datum) - new Date(b.datum));
+        const factRows = facturenSorted.map((x, i) => ({
+          "#": i + 1, "Factuurnr": x.nr, "Datum": x.datum, "Vervaldatum": x.vervalDatum || "",
+          "Klant": x.klant || "", "Behandeling": x.behandeling || "", "Status": x.status || "",
+          "Excl. BTW": x.exclBtw || 0, "BTW-bedrag": x.btw || 0, "Totaal incl. BTW": x.prijs || 0,
+          "Betaalwijze": x.betaalwijze || "",
+          "Factuur bekijken": x.nasPad ? "📎 Bekijk factuur" : "",
+          "Factuur downloaden": x.nasPad ? "⬇ Download factuur" : "",
+        }));
+        const wsFact = XLSX.utils.json_to_sheet(factRows);
+        styleHeader(wsFact, Object.keys(factRows[0])); autoWidth(wsFact, factRows);
+        voegLinksToe(wsFact, factRows, "Factuur bekijken", facturenSorted.map(x => getDeelbareBewijsstukUrl(x.nasPad)));
+        voegLinksToe(wsFact, factRows, "Factuur downloaden", facturenSorted.map(x => getDeelbareBewijsstukUrl(x.nasPad, true)));
+        XLSX.utils.book_append_sheet(wb, wsFact, "Facturen");
+      }
 
       // Jaren waarin daadwerkelijk data voorkomt (voorkomt dat bijv. januari 2025
       // en januari 2026 worden opgeteld als ze allebei "Januari" heten)
@@ -2888,24 +2911,24 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, klanten, le
       <Card>
         <SectionTitle>Exporteren voor boekhouder</SectionTitle>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.7 }}>
-          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, maandoverzicht, BTW-overzicht, kilometers, klanten, leveranciers én kleurenarchief.
+          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, facturen, maandoverzicht, BTW-overzicht, kilometers, klanten, leveranciers én kleurenarchief.
         </div>
         <Btn onClick={exportAlles} disabled={exporting} variant="success" fullWidth>
           {exporting ? "⏳ Bezig..." : "📥 Download boekhouding (.xlsx)"}
         </Btn>
         <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
-          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(ritten || []).length} ritten · {kleuren.length} kleuren
+          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(facturen || []).length} facturen · {(ritten || []).length} ritten · {kleuren.length} kleuren
         </div>
         {nucConfig?.serverUrl && (nucConfig?.viewerKey || nucConfig?.apiKey) ? (
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, marginTop: 10 }}>
-            💡 In het tabblad "Uitgaven" staan klikbare links om bewijsstukken
-            direct te bekijken of te downloaden — handig om in één keer naar de
-            boekhouder te sturen.
+            💡 In de tabbladen "Uitgaven" en "Facturen" staan klikbare links om
+            bewijsstukken en facturen direct te bekijken of te downloaden —
+            handig om in één keer naar de boekhouder te sturen.
           </div>
         ) : (
           <div style={{ fontSize: 11, color: C.orange, lineHeight: 1.6, marginTop: 10 }}>
             ⚠️ Stel hieronder bij <b>Bewijsstukken (NUC)</b> de server in om
-            klikbare links naar bewijsstukken in de export op te nemen.
+            klikbare links naar bewijsstukken én facturen in de export op te nemen.
           </div>
         )}
       </Card>
@@ -4116,7 +4139,7 @@ export default function App() {
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} ritten={ritten} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
-                  leveranciers={leveranciers} kleuren={kleuren} ritten={ritten} syncStatus={syncStatus}
+                  leveranciers={leveranciers} kleuren={kleuren} ritten={ritten} facturen={facturen} syncStatus={syncStatus}
                   onRestoreBackup={restoreBackup}
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
