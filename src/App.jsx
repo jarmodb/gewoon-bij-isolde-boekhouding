@@ -2664,12 +2664,13 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// KNAB IMPORT
+// KNAB IMPORT + AFSTEMMING
 // ════════════════════════════════════════════════════════════════════════════
-function KnabImport({ onAddInkomst, onAddUitgave }) {
+function KnabImport({ onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave, inkomsten, uitgaven }) {
   const fileRef = useRef(null);
   const [modal, setModal] = useState(false);
   const [transacties, setTransacties] = useState([]);
+  // selecties: { [transactieId]: { mode: 'koppel'|'nieuw'|'skip', match?, soort? } }
   const [selecties, setSelecties] = useState({});
 
   const parseRegel = (regel, sep) => {
@@ -2707,6 +2708,19 @@ function KnabImport({ onAddInkomst, onAddUitgave }) {
     return lijst;
   };
 
+  // Zoek de beste match op bedrag (±€0.02) gesorteerd op datumafstand
+  const vindMatch = (t, gebruikteIds) => {
+    const kandidaten = (t.isBij ? inkomsten : uitgaven)
+      .filter(k => !k.bankVerifieerd && !gebruikteIds.has(k.id));
+    const veld = t.isBij ? 'prijs' : 'bedragIncl';
+    return kandidaten
+      .filter(k => Math.abs((parseFloat(k[veld]) || 0) - t.bedrag) < 0.02)
+      .sort((a, b) =>
+        Math.abs(new Date(a.datum) - new Date(t.datum)) -
+        Math.abs(new Date(b.datum) - new Date(t.datum))
+      )[0] || null;
+  };
+
   const handleFile = (e) => {
     const bestand = e.target.files?.[0];
     if (!bestand) return;
@@ -2716,39 +2730,59 @@ function KnabImport({ onAddInkomst, onAddUitgave }) {
       const lijst = parseCsv(ev.target.result);
       setTransacties(lijst);
       const sel = {};
-      lijst.forEach(t => { sel[t.id] = t.isBij ? 'inkomst' : 'uitgave'; });
+      const gebruikteIds = new Set();
+      lijst.forEach(t => {
+        const match = vindMatch(t, gebruikteIds);
+        if (match) {
+          gebruikteIds.add(match.id);
+          sel[t.id] = { mode: 'koppel', match, soort: t.isBij ? 'inkomst' : 'uitgave' };
+        } else {
+          sel[t.id] = { mode: 'nieuw', soort: t.isBij ? 'inkomst' : 'uitgave' };
+        }
+      });
       setSelecties(sel);
       setModal(true);
     };
     reader.readAsText(bestand, 'UTF-8');
   };
 
+  const setMode = (id, mode) => setSelecties(s => ({ ...s, [id]: { ...s[id], mode } }));
+  const setSoort = (id, soort) => setSelecties(s => ({ ...s, [id]: { ...s[id], soort } }));
+
   const importeer = () => {
     transacties.forEach(t => {
-      const actie = selecties[t.id];
-      if (actie === 'inkomst') {
-        onAddInkomst({ id: uid(), datum: t.datum, behandeling: t.omschrijving,
-          klant: '', betaalwijze: 'Pin', bonPad: '',
-          prijs: t.bedrag, btw: +(t.bedrag / 1.21 * 0.21).toFixed(2),
-          exclBtw: +(t.bedrag / 1.21).toFixed(2) });
-      } else if (actie === 'uitgave') {
-        onAddUitgave({ id: uid(), datum: t.datum, categorie: 'Overig',
-          omschrijving: t.omschrijving, leverancier: t.naam,
-          betaalwijze: 'Pin', bonPad: '',
-          bedragExcl: +(t.bedrag / 1.21).toFixed(2), bedragIncl: t.bedrag });
+      const sel = selecties[t.id];
+      if (!sel || sel.mode === 'skip') return;
+      if (sel.mode === 'koppel' && sel.match) {
+        const bijgewerkt = { ...sel.match, bankVerifieerd: true };
+        if (sel.soort === 'inkomst') onEditInkomst(bijgewerkt);
+        else onEditUitgave(bijgewerkt);
+      } else if (sel.mode === 'nieuw') {
+        if (sel.soort === 'inkomst') {
+          onAddInkomst({ id: uid(), datum: t.datum, behandeling: t.omschrijving,
+            klant: '', betaalwijze: 'Pin', bonPad: '', bankVerifieerd: true,
+            prijs: t.bedrag, btw: +(t.bedrag / 1.21 * 0.21).toFixed(2),
+            exclBtw: +(t.bedrag / 1.21).toFixed(2) });
+        } else {
+          onAddUitgave({ id: uid(), datum: t.datum, categorie: 'Overig',
+            omschrijving: t.omschrijving, leverancier: t.naam,
+            betaalwijze: 'Pin', bonPad: '', bankVerifieerd: true,
+            bedragExcl: +(t.bedrag / 1.21).toFixed(2), bedragIncl: t.bedrag });
+        }
       }
     });
     setModal(false); setTransacties([]); setSelecties({});
   };
 
-  const aantalImport = Object.values(selecties).filter(v => v !== 'skip').length;
+  const aantalActief = Object.values(selecties).filter(s => s?.mode !== 'skip').length;
 
   return (
     <>
       <Card>
-        <SectionTitle>Knab bank importeren</SectionTitle>
+        <SectionTitle>Knab bankafstemming</SectionTitle>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.7 }}>
-          Download een CSV uit je Knab zakelijke rekening via <b>Transacties → Exporteren → CSV</b> en importeer ze direct als inkomsten of uitgaven.
+          Download een CSV uit je Knab zakelijke rekening via <b>Transacties → Exporteren → CSV</b>.
+          De app zoekt automatisch de bijbehorende boeking op en koppelt ze.
         </div>
         <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
         <Btn onClick={() => fileRef.current?.click()} fullWidth variant="secondary">
@@ -2756,45 +2790,114 @@ function KnabImport({ onAddInkomst, onAddUitgave }) {
         </Btn>
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={`${transacties.length} transacties gevonden`}>
+      <Modal open={modal} onClose={() => setModal(false)} title={`${transacties.length} banktransacties`}>
         {transacties.length === 0
           ? <EmptyState icon="🏦" text="Geen transacties gevonden in dit bestand" />
           : <>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>
-              Kies per transactie wat je wilt doen. Standaard: bij = inkomst, af = uitgave.
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>
+              🔗 <b>Koppelen</b> = match aan bestaande boeking &nbsp;·&nbsp; ➕ <b>Nieuw</b> = nieuwe boeking aanmaken
             </div>
-            {transacties.map(t => (
-              <div key={t.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14,
-                padding: '12px 14px', marginBottom: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {t.omschrijving}
+            {transacties.map(t => {
+              const sel = selecties[t.id] || { mode: 'nieuw', soort: t.isBij ? 'inkomst' : 'uitgave' };
+              const matchItem = sel.match;
+              return (
+                <div key={t.id} style={{
+                  background: sel.mode === 'skip' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
+                  borderRadius: 14, padding: '12px 14px', marginBottom: 10,
+                  border: `1px solid ${sel.mode === 'koppel' ? C.purple + '50' : sel.mode === 'nieuw' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'}`,
+                  opacity: sel.mode === 'skip' ? 0.45 : 1,
+                }}>
+                  {/* Banktransactie header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {t.omschrijving}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(t.datum)} · {t.naam}</div>
                     </div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(t.datum)} · {t.naam}</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: t.isBij ? C.green : C.red, flexShrink: 0 }}>
+                      {t.isBij ? '+' : '−'}{fmt(t.bedrag)}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 900, color: t.isBij ? C.green : C.red, flexShrink: 0 }}>
-                    {t.isBij ? '+' : '−'}{fmt(t.bedrag)}
+
+                  {/* Mode knoppen */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: sel.mode !== 'skip' ? 10 : 0 }}>
+                    {[
+                      ['koppel', `🔗 Koppelen${matchItem ? ' ✓' : ''}`, C.purple],
+                      ['nieuw', '➕ Nieuw aanmaken', C.green],
+                      ['skip', '⏭ Overslaan', C.muted],
+                    ].map(([m, label, color]) => (
+                      <button key={m} onClick={() => setMode(t.id, m)} style={{
+                        flex: 1, padding: '6px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: 11, fontWeight: 700,
+                        border: `1px solid ${sel.mode === m ? color + '80' : 'rgba(255,255,255,0.1)'}`,
+                        background: sel.mode === m ? color + '20' : 'transparent',
+                        color: sel.mode === m ? color : C.muted,
+                      }}>{label}</button>
+                    ))}
                   </div>
+
+                  {/* Koppelen: toon gevonden match */}
+                  {sel.mode === 'koppel' && (
+                    <div style={{
+                      background: matchItem ? C.purple + '15' : 'rgba(248,113,113,0.1)',
+                      border: `1px solid ${matchItem ? C.purple + '40' : C.red + '40'}`,
+                      borderRadius: 10, padding: '10px 12px',
+                    }}>
+                      {matchItem ? (
+                        <>
+                          <div style={{ fontSize: 11, color: C.purple, fontWeight: 800, marginBottom: 4 }}>
+                            🔗 Gevonden in boekhouding
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>
+                                {matchItem.behandeling || matchItem.omschrijving || matchItem.categorie}
+                              </div>
+                              <div style={{ fontSize: 11, color: C.muted }}>
+                                {fmtDate(matchItem.datum)}
+                                {matchItem.klant ? ` · ${matchItem.klant}` : ''}
+                                {matchItem.leverancier ? ` · ${matchItem.leverancier}` : ''}
+                              </div>
+                            </div>
+                            <Badge color={C.purple}>{fmt(matchItem.prijs || matchItem.bedragIncl)}</Badge>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 12, color: C.red }}>
+                          ⚠️ Geen match gevonden — kies "Nieuw aanmaken" om een nieuwe boeking te maken.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Nieuw: toon soort keuze */}
+                  {sel.mode === 'nieuw' && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[['inkomst', '💰 Inkomst', C.green], ['uitgave', '🧾 Uitgave', C.red]].map(([s, l, c]) => (
+                        <button key={s} onClick={() => setSoort(t.id, s)} style={{
+                          flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+                          fontSize: 12, fontWeight: 700,
+                          border: `1px solid ${sel.soort === s ? c + '80' : 'rgba(255,255,255,0.1)'}`,
+                          background: sel.soort === s ? c + '20' : 'transparent',
+                          color: sel.soort === s ? c : C.muted,
+                        }}>{l}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[['inkomst', '💰 Inkomst', C.green], ['uitgave', '🧾 Uitgave', C.red], ['skip', '⏭ Overslaan', C.muted]].map(([val, label, color]) => (
-                    <button key={val} onClick={() => setSelecties(s => ({ ...s, [t.id]: val }))} style={{
-                      flex: 1, padding: '6px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
-                      fontSize: 11, fontWeight: 700,
-                      border: `1px solid ${selecties[t.id] === val ? color + '80' : 'rgba(255,255,255,0.1)'}`,
-                      background: selecties[t.id] === val ? color + '20' : 'transparent',
-                      color: selecties[t.id] === val ? color : C.muted,
-                    }}>{label}</button>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
             <div style={{ position: 'sticky', bottom: 0, paddingTop: 14, paddingBottom: 4,
               background: 'linear-gradient(to top, #1a0635 85%, transparent)' }}>
-              <Btn onClick={importeer} fullWidth disabled={aantalImport === 0}>
-                ✓ Importeer {aantalImport} transactie{aantalImport !== 1 ? 's' : ''}
+              <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginBottom: 10 }}>
+                {Object.values(selecties).filter(s => s?.mode === 'koppel' && s.match).length} gekoppeld ·{' '}
+                {Object.values(selecties).filter(s => s?.mode === 'nieuw').length} nieuw ·{' '}
+                {Object.values(selecties).filter(s => s?.mode === 'skip').length} overgeslagen
+              </div>
+              <Btn onClick={importeer} fullWidth disabled={aantalActief === 0}>
+                ✓ Verwerken
               </Btn>
             </div>
           </>
@@ -2807,7 +2910,7 @@ function KnabImport({ onAddInkomst, onAddUitgave }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, onAddInkomst, onAddUitgave }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2997,7 +3100,11 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       </Card>
 
       {/* Knab import */}
-      <KnabImport onAddInkomst={onAddInkomst} onAddUitgave={onAddUitgave} />
+      <KnabImport
+        onAddInkomst={onAddInkomst} onAddUitgave={onAddUitgave}
+        onEditInkomst={onEditInkomst} onEditUitgave={onEditUitgave}
+        inkomsten={inkomsten} uitgaven={uitgaven}
+      />
 
       {/* Prijslijst */}
       <Card>
@@ -4288,7 +4395,8 @@ export default function App() {
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
                   onMaakVisitekaartje={maakVisitekaartje}
-                  onAddInkomst={addInkomst} onAddUitgave={addUitgave} />,
+                  onAddInkomst={addInkomst} onAddUitgave={addUitgave}
+                  onEditInkomst={editInkomst} onEditUitgave={editUitgave} />,
   };
 
   return (
