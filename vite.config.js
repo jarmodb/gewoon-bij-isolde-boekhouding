@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Gewoon bij Isolde',
-        short_name: 'Isolde',
+        short_name: 'gewoonbijisolde',
         description: 'Boekhouding & planning voor nagelsalon Gewoon bij Isolde',
         theme_color: '#1a0635',
         background_color: '#0d0020',
