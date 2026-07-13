@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-192x192.png', 'pwa-512x512.png', 'Logo nagelstylist NO BACKGROUND.png'],
+      includeAssets: ['pwa-192x192.png', 'pwa-512x512.png', 'Logo nagelstylist.png'],
       manifest: {
         name: 'Gewoon bij Isolde',
         short_name: 'Isolde',

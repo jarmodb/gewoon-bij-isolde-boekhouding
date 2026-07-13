@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logo = path.join(__dirname, 'public', 'Logo nagelstylist NO BACKGROUND.png');
+const logo = path.join(__dirname, 'public', 'Logo nagelstylist.png');
 const pub  = path.join(__dirname, 'public');
 
 for (const size of [192, 512]) {
