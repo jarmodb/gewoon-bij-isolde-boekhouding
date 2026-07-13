@@ -2664,9 +2664,150 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// KNAB IMPORT
+// ════════════════════════════════════════════════════════════════════════════
+function KnabImport({ onAddInkomst, onAddUitgave }) {
+  const fileRef = useRef(null);
+  const [modal, setModal] = useState(false);
+  const [transacties, setTransacties] = useState([]);
+  const [selecties, setSelecties] = useState({});
+
+  const parseRegel = (regel, sep) => {
+    const cols = [];
+    let veld = '', inQ = false;
+    for (const c of regel) {
+      if (c === '"') { inQ = !inQ; }
+      else if (c === sep && !inQ) { cols.push(veld); veld = ''; }
+      else { veld += c; }
+    }
+    cols.push(veld);
+    return cols;
+  };
+
+  const parseCsv = (tekst) => {
+    const regels = tekst.replace(/\r/g, '').split('\n').filter(r => r.trim());
+    if (!regels.length) return [];
+    const sep = regels[0].includes(';') ? ';' : ',';
+    const lijst = [];
+    for (let i = 1; i < regels.length; i++) {
+      const k = parseRegel(regels[i], sep);
+      if (k.length < 7) continue;
+      const [datumRaw, naam, , , , afBij, bedragRaw, , ...rest] = k;
+      const delen = datumRaw.trim().split('-');
+      if (delen.length !== 3) continue;
+      const [dag, mnd, jaar] = delen;
+      const datum = `${jaar}-${mnd.padStart(2, '0')}-${dag.padStart(2, '0')}`;
+      const bedrag = parseFloat(bedragRaw.trim().replace(/\./g, '').replace(',', '.')) || 0;
+      if (bedrag === 0) continue;
+      const isBij = afBij.trim().toLowerCase() === 'bij' || afBij.trim().toUpperCase() === 'C';
+      const mededelingen = rest.join(' ').trim();
+      const omschrijving = (mededelingen || naam.trim()).replace(/\s+/g, ' ').slice(0, 60);
+      lijst.push({ id: `k${i}`, datum, naam: naam.trim(), bedrag, isBij, omschrijving });
+    }
+    return lijst;
+  };
+
+  const handleFile = (e) => {
+    const bestand = e.target.files?.[0];
+    if (!bestand) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const lijst = parseCsv(ev.target.result);
+      setTransacties(lijst);
+      const sel = {};
+      lijst.forEach(t => { sel[t.id] = t.isBij ? 'inkomst' : 'uitgave'; });
+      setSelecties(sel);
+      setModal(true);
+    };
+    reader.readAsText(bestand, 'UTF-8');
+  };
+
+  const importeer = () => {
+    transacties.forEach(t => {
+      const actie = selecties[t.id];
+      if (actie === 'inkomst') {
+        onAddInkomst({ id: uid(), datum: t.datum, behandeling: t.omschrijving,
+          klant: '', betaalwijze: 'Pin', bonPad: '',
+          prijs: t.bedrag, btw: +(t.bedrag / 1.21 * 0.21).toFixed(2),
+          exclBtw: +(t.bedrag / 1.21).toFixed(2) });
+      } else if (actie === 'uitgave') {
+        onAddUitgave({ id: uid(), datum: t.datum, categorie: 'Overig',
+          omschrijving: t.omschrijving, leverancier: t.naam,
+          betaalwijze: 'Pin', bonPad: '',
+          bedragExcl: +(t.bedrag / 1.21).toFixed(2), bedragIncl: t.bedrag });
+      }
+    });
+    setModal(false); setTransacties([]); setSelecties({});
+  };
+
+  const aantalImport = Object.values(selecties).filter(v => v !== 'skip').length;
+
+  return (
+    <>
+      <Card>
+        <SectionTitle>Knab bank importeren</SectionTitle>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.7 }}>
+          Download een CSV uit je Knab zakelijke rekening via <b>Transacties → Exporteren → CSV</b> en importeer ze direct als inkomsten of uitgaven.
+        </div>
+        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
+        <Btn onClick={() => fileRef.current?.click()} fullWidth variant="secondary">
+          🏦 Knab CSV importeren
+        </Btn>
+      </Card>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={`${transacties.length} transacties gevonden`}>
+        {transacties.length === 0
+          ? <EmptyState icon="🏦" text="Geen transacties gevonden in dit bestand" />
+          : <>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>
+              Kies per transactie wat je wilt doen. Standaard: bij = inkomst, af = uitgave.
+            </div>
+            {transacties.map(t => (
+              <div key={t.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14,
+                padding: '12px 14px', marginBottom: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t.omschrijving}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(t.datum)} · {t.naam}</div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: t.isBij ? C.green : C.red, flexShrink: 0 }}>
+                    {t.isBij ? '+' : '−'}{fmt(t.bedrag)}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[['inkomst', '💰 Inkomst', C.green], ['uitgave', '🧾 Uitgave', C.red], ['skip', '⏭ Overslaan', C.muted]].map(([val, label, color]) => (
+                    <button key={val} onClick={() => setSelecties(s => ({ ...s, [t.id]: val }))} style={{
+                      flex: 1, padding: '6px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+                      fontSize: 11, fontWeight: 700,
+                      border: `1px solid ${selecties[t.id] === val ? color + '80' : 'rgba(255,255,255,0.1)'}`,
+                      background: selecties[t.id] === val ? color + '20' : 'transparent',
+                      color: selecties[t.id] === val ? color : C.muted,
+                    }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ position: 'sticky', bottom: 0, paddingTop: 14, paddingBottom: 4,
+              background: 'linear-gradient(to top, #1a0635 85%, transparent)' }}>
+              <Btn onClick={importeer} fullWidth disabled={aantalImport === 0}>
+                ✓ Importeer {aantalImport} transactie{aantalImport !== 1 ? 's' : ''}
+              </Btn>
+            </div>
+          </>
+        }
+      </Modal>
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, onAddInkomst, onAddUitgave }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -2854,6 +2995,9 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
           <SyncDot status={syncStatus} />
         </div>
       </Card>
+
+      {/* Knab import */}
+      <KnabImport onAddInkomst={onAddInkomst} onAddUitgave={onAddUitgave} />
 
       {/* Prijslijst */}
       <Card>
@@ -4143,7 +4287,8 @@ export default function App() {
                   onRestoreBackup={restoreBackup}
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
-                  onMaakVisitekaartje={maakVisitekaartje} />,
+                  onMaakVisitekaartje={maakVisitekaartje}
+                  onAddInkomst={addInkomst} onAddUitgave={addUitgave} />,
   };
 
   return (
