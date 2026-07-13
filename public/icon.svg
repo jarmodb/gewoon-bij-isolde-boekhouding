@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="110" fill="#1a0635"/>
+  <!-- Bottle body -->
+  <rect x="186" y="230" width="140" height="185" rx="28" fill="#e879f9"/>
+  <!-- Shine -->
+  <rect x="200" y="240" width="36" height="165" rx="14" fill="#f5b8ff" opacity="0.35"/>
+  <!-- Cap -->
+  <rect x="200" y="158" width="112" height="80" rx="18" fill="#a855f7"/>
+  <rect x="213" y="168" width="28" height="60" rx="10" fill="#c084fc" opacity="0.45"/>
+  <!-- Brush handle -->
+  <rect x="246" y="82" width="20" height="82" rx="7" fill="#7c3aed"/>
+  <!-- Label -->
+  <rect x="200" y="268" width="112" height="60" rx="10" fill="#fff" opacity="0.12"/>
+  <rect x="215" y="280" width="82" height="8" rx="4" fill="#fff" opacity="0.5"/>
+  <rect x="222" y="298" width="68" height="6" rx="3" fill="#fff" opacity="0.3"/>
+  <!-- Stars -->
+  <circle cx="370" cy="148" r="12" fill="#fbbf24" opacity="0.9"/>
+  <circle cx="355" cy="175" r="7"  fill="#fbbf24" opacity="0.6"/>
+  <circle cx="384" cy="170" r="5"  fill="#fbbf24" opacity="0.5"/>
+  <circle cx="148" cy="360" r="9"  fill="#e879f9" opacity="0.5"/>
+  <circle cx="160" cy="340" r="5"  fill="#a855f7" opacity="0.4"/>
+</svg>
