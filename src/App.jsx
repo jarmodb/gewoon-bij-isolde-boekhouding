@@ -2975,6 +2975,184 @@ function KnabImport({ onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave, 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// DIPLOMAS & CURSUSSEN
+// ════════════════════════════════════════════════════════════════════════════
+const DIPLOMA_CATEGORIEEN = ["Diploma","Certificaat","Cursus","Opleiding","Workshop","Overig"];
+
+function Diplomas({ data, onAdd, onDelete, onEdit }) {
+  const [modal, setModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [fotoPreview, setFotoPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const leeg = { naam: "", instelling: "", datum: TODAY, categorie: "Diploma", notities: "", fotoPad: "" };
+  const [form, setForm] = useState(leeg);
+
+  const openNieuw = () => { setForm(leeg); setEditItem(null); setFotoPreview(null); setModal(true); };
+  const openEdit = (item) => { setForm({ ...leeg, ...item }); setEditItem(item); setFotoPreview(null); setModal(true); };
+  const sluit = () => { setModal(false); setEditItem(null); setFotoPreview(null); };
+
+  const opslaan = () => {
+    if (!form.naam.trim()) return;
+    const item = { ...form, id: editItem?.id || uid() };
+    editItem ? onEdit(item) : onAdd(item);
+    sluit();
+  };
+
+  const handleFoto = async (bestand) => {
+    if (!bestand) return;
+    setUploading(true);
+    try {
+      const pad = await uploadNaarNAS(bestand, "diplomas", form.datum, 0, form.naam, form.instelling);
+      setForm(f => ({ ...f, fotoPad: pad }));
+      const reader = new FileReader();
+      reader.onload = e => setFotoPreview(e.target.result);
+      reader.readAsDataURL(bestand);
+    } catch (e) {
+      alert("Upload mislukt: " + e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const gesorteerdOpdatum = [...data].sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>🎓 Diploma's & Cursussen</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{data.length} {data.length === 1 ? "certificaat" : "certificaten"}</div>
+        </div>
+        <button onClick={openNieuw} style={{ background: `linear-gradient(135deg,${C.purple},${C.pink})`,
+          border: "none", borderRadius: 14, padding: "10px 18px", color: "#fff",
+          fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
+          + Toevoegen
+        </button>
+      </div>
+
+      {gesorteerdOpdatum.length === 0 ? (
+        <EmptyState icon="🎓" text="Nog geen diploma's of cursussen toegevoegd" />
+      ) : (
+        gesorteerdOpdatum.map(item => {
+          const fotoUrl = item.fotoPad ? getBewijsstukUrl(item.fotoPad) : null;
+          return (
+            <Card key={item.id} style={{ cursor: "default" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <Badge color={C.purple}>{item.categorie || "Diploma"}</Badge>
+                    <span style={{ fontSize: 12, color: C.muted }}>{fmtDate(item.datum)}</span>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 2 }}>{item.naam}</div>
+                  {item.instelling && <div style={{ fontSize: 13, color: C.label }}>{item.instelling}</div>}
+                  {item.notities && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>{item.notities}</div>}
+                  {fotoUrl && (
+                    <div style={{ marginTop: 10 }}>
+                      <img src={fotoUrl} alt="oorkonde" onClick={() => window.open(fotoUrl, "_blank")}
+                        style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 10, cursor: "pointer",
+                          objectFit: "contain", border: `1px solid ${C.border}` }} />
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => openEdit(item)}
+                    style={{ background: "rgba(168,85,247,0.15)", border: `1px solid ${C.purple}44`,
+                      borderRadius: 10, padding: "6px 12px", color: C.purple, cursor: "pointer",
+                      fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>✏️ Bewerk</button>
+                  <button onClick={() => setConfirmId(item.id)}
+                    style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)",
+                      borderRadius: 10, padding: "6px 12px", color: C.red, cursor: "pointer",
+                      fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>🗑 Verwijder</button>
+                </div>
+              </div>
+            </Card>
+          );
+        })
+      )}
+
+      {/* Bevestig verwijderen */}
+      {confirmId && (
+        <Modal title="Verwijderen?" onClose={() => setConfirmId(null)}>
+          <p style={{ color: C.muted, fontSize: 14 }}>Weet je zeker dat je dit wilt verwijderen?</p>
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button onClick={() => { onDelete(confirmId); setConfirmId(null); }}
+              style={{ flex: 1, background: C.red, border: "none", borderRadius: 12,
+                padding: 12, color: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+              Verwijderen
+            </button>
+            <button onClick={() => setConfirmId(null)}
+              style={{ flex: 1, background: "rgba(255,255,255,0.08)", border: `1px solid ${C.border}`,
+                borderRadius: 12, padding: 12, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              Annuleren
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Formulier modal */}
+      {modal && (
+        <Modal title={editItem ? "Bewerken" : "Nieuw diploma / cursus"} onClose={sluit}>
+          <Field label="Categorie">
+            <select value={form.categorie} onChange={e => setForm(f => ({ ...f, categorie: e.target.value }))}
+              style={{ ...inputStyle }}>
+              {DIPLOMA_CATEGORIEEN.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Naam *">
+            <input value={form.naam} onChange={e => setForm(f => ({ ...f, naam: e.target.value }))}
+              placeholder="bijv. Gel nagels basis" style={inputStyle} />
+          </Field>
+          <Field label="Instelling / school">
+            <input value={form.instelling} onChange={e => setForm(f => ({ ...f, instelling: e.target.value }))}
+              placeholder="bijv. NailPro Academy" style={inputStyle} />
+          </Field>
+          <Field label="Datum">
+            <input type="date" value={form.datum} onChange={e => setForm(f => ({ ...f, datum: e.target.value }))}
+              style={inputStyle} />
+          </Field>
+          <Field label="Notities">
+            <textarea value={form.notities} onChange={e => setForm(f => ({ ...f, notities: e.target.value }))}
+              placeholder="Extra informatie..." rows={3}
+              style={{ ...inputStyle, resize: "vertical" }} />
+          </Field>
+          <Field label="Foto oorkonde / certificaat">
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              style={{ width: "100%", background: "rgba(255,255,255,0.07)", border: "1.5px dashed rgba(255,255,255,0.2)",
+                borderRadius: 12, padding: 14, color: C.muted, cursor: "pointer",
+                fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {uploading ? "⏳ Uploaden..." : form.fotoPad ? "📷 Andere foto kiezen" : "📷 Foto kiezen"}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment"
+              style={{ display: "none" }} onChange={e => handleFoto(e.target.files?.[0])} />
+            {(fotoPreview || (form.fotoPad && getBewijsstukUrl(form.fotoPad))) && (
+              <img src={fotoPreview || getBewijsstukUrl(form.fotoPad)} alt="preview"
+                style={{ marginTop: 10, maxWidth: "100%", maxHeight: 160, borderRadius: 10, objectFit: "contain" }} />
+            )}
+          </Field>
+          <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+            <button onClick={opslaan} disabled={!form.naam.trim()}
+              style={{ flex: 1, background: `linear-gradient(135deg,${C.purple},${C.pink})`,
+                border: "none", borderRadius: 12, padding: 14, color: "#fff",
+                fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "inherit",
+                opacity: form.naam.trim() ? 1 : 0.4 }}>
+              {editItem ? "Opslaan" : "Toevoegen"}
+            </button>
+            <button onClick={sluit}
+              style={{ flex: 1, background: "rgba(255,255,255,0.08)", border: `1px solid ${C.border}`,
+                borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              Annuleren
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
 function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave }) {
@@ -3920,6 +4098,7 @@ export default function App() {
   const [bestellijst, setBestellijst] = useState([]);
   const [geblokkeerd, setGeblokkeerd] = useState([]);
   const [ritten, setRitten] = useState([]);
+  const [diplomas, setDiplomas] = useState([]);
   const IB_DEFAULTS = { salaris: "0", urencriterium: "ja", starter: "nee" };
   const [ibInst, setIbInstState] = useState(IB_DEFAULTS);
   const [salonInst, setSalonInst] = useState({
@@ -3950,6 +4129,7 @@ export default function App() {
       if (db.bestellijst) setBestellijst(db.bestellijst);
       if (db.geblokkeerd) setGeblokkeerd(db.geblokkeerd);
       if (db.ritten) setRitten(db.ritten);
+      if (db.diplomas) setDiplomas(db.diplomas);
       if (db.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...db.ibInst }));
       setLoading(false);
     })();
@@ -3971,6 +4151,7 @@ export default function App() {
       if (nieuweData.bestellijst) setBestellijst(nieuweData.bestellijst);
       if (nieuweData.geblokkeerd) setGeblokkeerd(nieuweData.geblokkeerd);
       if (nieuweData.ritten) setRitten(nieuweData.ritten);
+      if (nieuweData.diplomas) setDiplomas(nieuweData.diplomas);
       if (nieuweData.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...nieuweData.ibInst }));
       showToast("🔄 Data bijgewerkt");
     });
@@ -4336,6 +4517,28 @@ export default function App() {
     showToast("✓ Rit bijgewerkt");
   };
 
+  // ── Diplomas ──────────────────────────────────────────────────────────────
+  const addDiploma = async (item) => {
+    const updated = [...(dbRef.current.diplomas || []), item];
+    setDiplomas(updated);
+    await persist({ diplomas: updated });
+    showToast("✓ Diploma opgeslagen");
+  };
+
+  const editDiploma = async (item) => {
+    const updated = (dbRef.current.diplomas || []).map(x => x.id === item.id ? item : x);
+    setDiplomas(updated);
+    await persist({ diplomas: updated });
+    showToast("✓ Diploma bijgewerkt");
+  };
+
+  const deleteDiploma = async (id) => {
+    const updated = (dbRef.current.diplomas || []).filter(x => x.id !== id);
+    setDiplomas(updated);
+    await persist({ diplomas: updated });
+    showToast("✓ Verwijderd");
+  };
+
   // ── IB instellingen ───────────────────────────────────────────────────────
   const updateIbInst = async (inst) => {
     const bijgewerkt = { ...IB_DEFAULTS, ...inst };
@@ -4412,6 +4615,7 @@ export default function App() {
     { id: "bestellen", icon: "🛒", label: "Bestellen" },
     { id: "kilometers", icon: "🚗", label: "Kilometers" },
     { id: "btw",       icon: "📊", label: "BTW" },
+    { id: "diplomas",  icon: "🎓", label: "Diploma's" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
 
@@ -4459,6 +4663,7 @@ export default function App() {
     bestellen: <Bestellijst items={bestellijst} onAdd={addBestelling} onToggle={toggleBestelling} onDelete={deleteBestelling} onEdit={editBestelling} />,
     kilometers: <KilometerRegistratie ritten={ritten} onAdd={addRit} onDelete={deleteRit} onEdit={editRit} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} ritten={ritten} />,
+    diplomas:  <Diplomas data={diplomas} onAdd={addDiploma} onEdit={editDiploma} onDelete={deleteDiploma} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
                   leveranciers={leveranciers} kleuren={kleuren} ritten={ritten} facturen={facturen} syncStatus={syncStatus}
