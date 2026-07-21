@@ -3075,7 +3075,7 @@ function Diplomas({ data, onAdd, onDelete, onEdit }) {
 
       {/* Bevestig verwijderen */}
       {confirmId && (
-        <Modal title="Verwijderen?" onClose={() => setConfirmId(null)}>
+        <Modal open={!!confirmId} title="Verwijderen?" onClose={() => setConfirmId(null)}>
           <p style={{ color: C.muted, fontSize: 14 }}>Weet je zeker dat je dit wilt verwijderen?</p>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <button onClick={() => { onDelete(confirmId); setConfirmId(null); }}
@@ -3094,7 +3094,7 @@ function Diplomas({ data, onAdd, onDelete, onEdit }) {
 
       {/* Formulier modal */}
       {modal && (
-        <Modal title={editItem ? "Bewerken" : "Nieuw diploma / cursus"} onClose={sluit}>
+        <Modal open={modal} title={editItem ? "Bewerken" : "Nieuw diploma / cursus"} onClose={sluit}>
           <Field label="Categorie">
             <select value={form.categorie} onChange={e => setForm(f => ({ ...f, categorie: e.target.value }))}
               style={{ ...inputStyle }}>
