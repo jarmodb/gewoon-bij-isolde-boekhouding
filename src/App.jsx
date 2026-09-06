@@ -724,7 +724,7 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
   const [confirmId, setConfirmId] = useState(null);
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
-  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedrag: "", bonPad: "" };
+  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedrag: "", bonPad: "", notitie: "", btwVerlegd: false, btwVerlegdPerc: 21 };
   const [form, setForm] = useState(LEEG_UIT);
   const [btwModus, setBtwModus] = useState("excl");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -742,16 +742,19 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
     setBtwModus("excl");
     setForm({ datum: item.datum, categorie: item.categorie, omschrijving: item.omschrijving || "",
       leverancier: item.leverancier || "", betaalwijze: item.betaalwijze || "",
-      bedrag: item.bedragExcl, bonPad: item.bonPad || "" });
+      bedrag: item.bedragExcl, bonPad: item.bonPad || "", notitie: item.notitie || "",
+      btwVerlegd: item.btwVerlegd || false, btwVerlegdPerc: item.btwVerlegdPerc || 21 });
     setModal(true);
   };
 
   const submit = () => {
     if (!form.categorie || !form.bedrag || !form.datum) return;
     const { bedragExcl, bedragIncl } = berekenUit(form.bedrag, btwModus);
+    const btwVerlegdBedrag = form.btwVerlegd ? +(bedragExcl * form.btwVerlegdPerc / 100).toFixed(2) : 0;
     const item = { datum: form.datum, categorie: form.categorie, omschrijving: form.omschrijving,
       leverancier: form.leverancier, betaalwijze: form.betaalwijze, bonPad: form.bonPad,
-      bedragExcl, bedragIncl };
+      notitie: form.notitie, btwVerlegd: form.btwVerlegd, btwVerlegdPerc: form.btwVerlegdPerc,
+      btwVerlegdBedrag, bedragExcl, bedragIncl };
     if (editItem) { onEdit({ ...editItem, ...item }); }
     else { onAdd({ id: uid(), ...item }); }
     setModal(false); setEditItem(null); setForm(LEEG_UIT); setBtwModus("excl");
@@ -803,7 +806,9 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
                     </span>
                   )}
                   {item.bankVerifieerd && <Badge color="#60a5fa">🏦 {item.bankDatum ? fmtDate(item.bankDatum) : "Knab"}</Badge>}
+                  {item.btwVerlegd && <Badge color="#f59e0b">🇧🇪 BTW verlegd {item.btwVerlegdPerc}%</Badge>}
                 </div>
+                {item.notitie && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>{item.notitie}</div>}
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <div style={{ fontSize: 20, fontWeight: 900, color: C.red }}>{fmt(item.bedragIncl)}</div>
@@ -872,6 +877,39 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
           </datalist>
         </Field>
         <Select label="Betaalwijze" value={form.betaalwijze} onChange={e => set("betaalwijze", e.target.value)} options={BETAALWIJZE} />
+        <Field label="Notitie (optioneel)">
+          <textarea value={form.notitie} onChange={e => set("notitie", e.target.value)}
+            placeholder="Bijv. voor welke klant, reden aankoop..." rows={2}
+            style={{ ...inputStyle, resize: "vertical" }}
+            onFocus={e => e.target.style.borderColor = C.pink}
+            onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.15)"} />
+        </Field>
+        <Field label="">
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+            <input type="checkbox" checked={form.btwVerlegd} onChange={e => set("btwVerlegd", e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: C.purple, cursor: "pointer" }} />
+            <span style={{ fontSize: 14, color: "#fff", fontWeight: 600 }}>🇧🇪 EU-aankoop (BTW verlegd)</span>
+          </label>
+          {form.btwVerlegd && (
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 13, color: C.muted }}>BTW-tarief:</span>
+              {[21, 9, 0].map(p => (
+                <button key={p} type="button" onClick={() => set("btwVerlegdPerc", p)}
+                  style={{ padding: "6px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                    border: "none", cursor: "pointer", fontFamily: "inherit",
+                    background: form.btwVerlegdPerc === p ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.1)",
+                    color: form.btwVerlegdPerc === p ? "#fff" : C.muted }}>
+                  {p}%
+                </button>
+              ))}
+              {form.bedrag > 0 && (
+                <span style={{ fontSize: 12, color: "#f59e0b", marginLeft: 4 }}>
+                  = {fmt(parseFloat(form.bedrag || 0) * form.btwVerlegdPerc / 100)} verlegd
+                </span>
+              )}
+            </div>
+          )}
+        </Field>
         <BonUpload type="uitgave" datum={form.datum} bedrag={form.bedrag}
           naam={form.leverancier} omschrijving={form.omschrijving}
           uploading={uploading} setUploading={setUploading}
@@ -1879,7 +1917,10 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
     const betaald = uitgaven
       .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
       .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-    return { ontvangen, betaald, teBetalen: ontvangen - betaald };
+    const verlegd = uitgaven
+      .filter(x => { const d = new Date(x.datum); return x.btwVerlegd && d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+      .reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
+    return { ontvangen, betaald, verlegd, teBetalen: ontvangen - betaald };
   };
 
   const btwPerMaand = (maand) => {
@@ -1889,7 +1930,10 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
     const betaald = uitgaven
       .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && d.getMonth() === maand; })
       .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-    return { ontvangen, betaald, saldo: ontvangen - betaald };
+    const verlegd = uitgaven
+      .filter(x => { const d = new Date(x.datum); return x.btwVerlegd && d.getFullYear() === jaar && d.getMonth() === maand; })
+      .reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
+    return { ontvangen, betaald, verlegd, saldo: ontvangen - betaald };
   };
 
   const totaalJaar = btwVoorPeriode([0,1,2,3,4,5,6,7,8,9,10,11]);
@@ -2144,6 +2188,31 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
           </Card>
         );
       })}
+
+      {/* BTW verlegd sectie */}
+      {totaalJaar.verlegd > 0 && (
+        <Card style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.25)", marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#f59e0b", marginBottom: 8 }}>🇧🇪 BTW VERLEGD (EU-AANKOPEN) {jaar}</div>
+          <div style={{ fontSize: 13, color: "#fff", marginBottom: 6 }}>
+            Totaal verlegd bedrag: <strong>{fmt(totaalJaar.verlegd)}</strong>
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.8 }}>
+            In de BTW-aangifte opgeven als:<br/>
+            <span style={{ color: "#fcd34d" }}>• Rubriek 4b</span> (verschuldigd): {fmt(totaalJaar.verlegd)}<br/>
+            <span style={{ color: "#6ee7b7" }}>• Rubriek 5b</span> (voorbelasting): {fmt(totaalJaar.verlegd)}<br/>
+            <span style={{ color: C.muted }}>Netto effect = €0 — maar verplicht te melden.</span>
+          </div>
+          {KWARTALEN.map(({ q, maanden }) => {
+            const { verlegd } = btwVoorPeriode(maanden);
+            if (!verlegd) return null;
+            return (
+              <div key={q} style={{ marginTop: 6, fontSize: 12, color: C.muted }}>
+                {q}: <span style={{ color: "#f59e0b", fontWeight: 700 }}>{fmt(verlegd)}</span>
+              </div>
+            );
+          })}
+        </Card>
+      )}
 
       <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>
         ▲ te betalen aan belastingdienst · ▼ teruggave · BTW 21%
