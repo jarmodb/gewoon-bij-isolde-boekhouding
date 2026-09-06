@@ -724,7 +724,7 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
   const [confirmId, setConfirmId] = useState(null);
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
-  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedrag: "", bonPad: "", notitie: "", btwVerlegd: false, btwVerlegdPerc: 21 };
+  const LEEG_UIT = { datum: TODAY, categorie: "", omschrijving: "", leverancier: "", betaalwijze: "", bedrag: "", bonPad: "", notitie: "", btwVerlegd: false, btwVerlegdPerc: 21, btwVerlegdType: "4b" };
   const [form, setForm] = useState(LEEG_UIT);
   const [btwModus, setBtwModus] = useState("excl");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -743,18 +743,26 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
     setForm({ datum: item.datum, categorie: item.categorie, omschrijving: item.omschrijving || "",
       leverancier: item.leverancier || "", betaalwijze: item.betaalwijze || "",
       bedrag: item.bedragExcl, bonPad: item.bonPad || "", notitie: item.notitie || "",
-      btwVerlegd: item.btwVerlegd || false, btwVerlegdPerc: item.btwVerlegdPerc || 21 });
+      btwVerlegd: item.btwVerlegd || false, btwVerlegdPerc: item.btwVerlegdPerc || 21,
+      btwVerlegdType: item.btwVerlegdType || "4b" });
     setModal(true);
   };
 
   const submit = () => {
     if (!form.categorie || !form.bedrag || !form.datum) return;
-    const { bedragExcl, bedragIncl } = berekenUit(form.bedrag, btwModus);
+    let bedragExcl, bedragIncl;
+    if (form.btwVerlegd) {
+      // EU-aankoop: leverancier rekent geen BTW — factuurprijs IS het excl. bedrag
+      bedragExcl = parseFloat(form.bedrag) || 0;
+      bedragIncl = bedragExcl; // geen BTW op de factuur
+    } else {
+      ({ bedragExcl, bedragIncl } = berekenUit(form.bedrag, btwModus));
+    }
     const btwVerlegdBedrag = form.btwVerlegd ? +(bedragExcl * form.btwVerlegdPerc / 100).toFixed(2) : 0;
     const item = { datum: form.datum, categorie: form.categorie, omschrijving: form.omschrijving,
       leverancier: form.leverancier, betaalwijze: form.betaalwijze, bonPad: form.bonPad,
       notitie: form.notitie, btwVerlegd: form.btwVerlegd, btwVerlegdPerc: form.btwVerlegdPerc,
-      btwVerlegdBedrag, bedragExcl, bedragIncl };
+      btwVerlegdType: form.btwVerlegdType, btwVerlegdBedrag, bedragExcl, bedragIncl };
     if (editItem) { onEdit({ ...editItem, ...item }); }
     else { onAdd({ id: uid(), ...item }); }
     setModal(false); setEditItem(null); setForm(LEEG_UIT); setBtwModus("excl");
@@ -891,22 +899,42 @@ function Uitgaven({ data, leveranciers, onAdd, onDelete, onEdit }) {
             <span style={{ fontSize: 14, color: "#fff", fontWeight: 600 }}>🇧🇪 EU-aankoop (BTW verlegd)</span>
           </label>
           {form.btwVerlegd && (
-            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 13, color: C.muted }}>BTW-tarief:</span>
-              {[21, 9, 0].map(p => (
-                <button key={p} type="button" onClick={() => set("btwVerlegdPerc", p)}
-                  style={{ padding: "6px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                    border: "none", cursor: "pointer", fontFamily: "inherit",
-                    background: form.btwVerlegdPerc === p ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.1)",
-                    color: form.btwVerlegdPerc === p ? "#fff" : C.muted }}>
-                  {p}%
-                </button>
-              ))}
-              {form.bedrag > 0 && (
-                <span style={{ fontSize: 12, color: "#f59e0b", marginLeft: 4 }}>
-                  = {fmt(parseFloat(form.bedrag || 0) * form.btwVerlegdPerc / 100)} verlegd
-                </span>
-              )}
+            <div style={{ marginTop: 10, background: "rgba(245,158,11,0.07)", borderRadius: 12, padding: 12, border: "1px solid rgba(245,158,11,0.2)" }}>
+              <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 8 }}>
+                Leverancier rekent geen BTW — jij geeft het zelf op bij de Belastingdienst.
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: C.muted, alignSelf: "center" }}>Soort:</span>
+                {[["4b","Producten / goederen"],["4a","Diensten (cursus, software...)"]].map(([type, label]) => (
+                  <button key={type} type="button" onClick={() => set("btwVerlegdType", type)}
+                    style={{ padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+                      border: "none", cursor: "pointer", fontFamily: "inherit",
+                      background: form.btwVerlegdType === type ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.1)",
+                      color: form.btwVerlegdType === type ? "#fff" : C.muted }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: C.muted }}>BTW-tarief:</span>
+                {[21, 9].map(p => (
+                  <button key={p} type="button" onClick={() => set("btwVerlegdPerc", p)}
+                    style={{ padding: "6px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                      border: "none", cursor: "pointer", fontFamily: "inherit",
+                      background: form.btwVerlegdPerc === p ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.1)",
+                      color: form.btwVerlegdPerc === p ? "#fff" : C.muted }}>
+                    {p}%
+                  </button>
+                ))}
+                {form.bedrag > 0 && (
+                  <span style={{ fontSize: 12, color: "#f59e0b" }}>
+                    → verlegd BTW: {fmt(parseFloat(form.bedrag || 0) * form.btwVerlegdPerc / 100)}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
+                Rubriek {form.btwVerlegdType} (verschuldigd) + 5b (aftrekbaar) = netto €0
+              </div>
             </div>
           )}
         </Field>
@@ -1917,10 +1945,13 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
     const betaald = uitgaven
       .filter(x => { const d = new Date(x.datum); return d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
       .reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-    const verlegd = uitgaven
-      .filter(x => { const d = new Date(x.datum); return x.btwVerlegd && d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+    const verlegd4b = uitgaven
+      .filter(x => { const d = new Date(x.datum); return x.btwVerlegd && (x.btwVerlegdType || "4b") === "4b" && d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
       .reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
-    return { ontvangen, betaald, verlegd, teBetalen: ontvangen - betaald };
+    const verlegd4a = uitgaven
+      .filter(x => { const d = new Date(x.datum); return x.btwVerlegd && x.btwVerlegdType === "4a" && d.getFullYear() === jaar && maanden.includes(d.getMonth()); })
+      .reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
+    return { ontvangen, betaald, verlegd4a, verlegd4b, verlegd: verlegd4a + verlegd4b, teBetalen: ontvangen - betaald };
   };
 
   const btwPerMaand = (maand) => {
@@ -2192,25 +2223,32 @@ function BTWOverzicht({ inkomsten, uitgaven, ibInst, onUpdateIbInst, ritten }) {
       {/* BTW verlegd sectie */}
       {totaalJaar.verlegd > 0 && (
         <Card style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.25)", marginTop: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#f59e0b", marginBottom: 8 }}>🇧🇪 BTW VERLEGD (EU-AANKOPEN) {jaar}</div>
-          <div style={{ fontSize: 13, color: "#fff", marginBottom: 6 }}>
-            Totaal verlegd bedrag: <strong>{fmt(totaalJaar.verlegd)}</strong>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#f59e0b", marginBottom: 10 }}>🇧🇪 BTW VERLEGD — EU-AANKOPEN {jaar}</div>
+          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.9 }}>
+            In de <strong style={{ color: "#fff" }}>BTW-aangifte</strong> opgeven als:
+            {totaalJaar.verlegd4b > 0 && <>
+              <br/><span style={{ color: "#fcd34d" }}>• Rubriek 4b</span> — goederen uit EU: <strong style={{ color: "#fff" }}>{fmt(totaalJaar.verlegd4b)}</strong>
+            </>}
+            {totaalJaar.verlegd4a > 0 && <>
+              <br/><span style={{ color: "#fcd34d" }}>• Rubriek 4a</span> — diensten uit EU: <strong style={{ color: "#fff" }}>{fmt(totaalJaar.verlegd4a)}</strong>
+            </>}
+            <br/><span style={{ color: "#6ee7b7" }}>• Rubriek 5b</span> — voorbelasting (aftrek): <strong style={{ color: "#fff" }}>{fmt(totaalJaar.verlegd)}</strong>
+            <br/><span style={{ color: C.muted }}>Netto effect = €0, maar verplicht te melden.</span>
           </div>
-          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.8 }}>
-            In de BTW-aangifte opgeven als:<br/>
-            <span style={{ color: "#fcd34d" }}>• Rubriek 4b</span> (verschuldigd): {fmt(totaalJaar.verlegd)}<br/>
-            <span style={{ color: "#6ee7b7" }}>• Rubriek 5b</span> (voorbelasting): {fmt(totaalJaar.verlegd)}<br/>
-            <span style={{ color: C.muted }}>Netto effect = €0 — maar verplicht te melden.</span>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(245,158,11,0.2)" }}>
+            {KWARTALEN.map(({ q, maanden }) => {
+              const { verlegd4a, verlegd4b } = btwVoorPeriode(maanden);
+              if (!verlegd4a && !verlegd4b) return null;
+              return (
+                <div key={q} style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>
+                  <span style={{ color: "#fff", fontWeight: 700 }}>{q}:</span>
+                  {verlegd4b > 0 && <span> 4b {fmt(verlegd4b)}</span>}
+                  {verlegd4a > 0 && <span> · 4a {fmt(verlegd4a)}</span>}
+                  <span style={{ color: "#6ee7b7" }}> → 5b {fmt(verlegd4a + verlegd4b)}</span>
+                </div>
+              );
+            })}
           </div>
-          {KWARTALEN.map(({ q, maanden }) => {
-            const { verlegd } = btwVoorPeriode(maanden);
-            if (!verlegd) return null;
-            return (
-              <div key={q} style={{ marginTop: 6, fontSize: 12, color: C.muted }}>
-                {q}: <span style={{ color: "#f59e0b", fontWeight: 700 }}>{fmt(verlegd)}</span>
-              </div>
-            );
-          })}
         </Card>
       )}
 
