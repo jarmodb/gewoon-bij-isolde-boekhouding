@@ -3327,14 +3327,35 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
     URL.revokeObjectURL(url);
   };
 
-  const exportAlles = () => {
+  const exportAlles = (periode) => {
     setExporting(true);
+    setExportModal(false);
     try {
       const wb = XLSX.utils.book_new();
       const MONTHS = ["Januari","Februari","Maart","April","Mei","Juni","Juli","Augustus","September","Oktober","November","December"];
 
+      const inPeriode = (datum) => {
+        if (!datum) return false;
+        if (!periode.jaar) return true;
+        const d = new Date(datum);
+        if (d.getFullYear() !== periode.jaar) return false;
+        if (!periode.maanden) return true;
+        return periode.maanden.includes(d.getMonth());
+      };
+
+      const incFiltered = inkomsten.filter(x => inPeriode(x.datum));
+      const uitFiltered = uitgaven.filter(x => inPeriode(x.datum));
+      const facFiltered = (facturen || []).filter(x => inPeriode(x.datum));
+      const kmFiltered = (ritten || []).filter(x => inPeriode(x.datum));
+
+      const bestandsnaam = periode.jaar
+        ? periode.maanden
+          ? `Nagelsalon_Q${Math.ceil((periode.maanden[0]+1)/3)}_${periode.jaar}.xlsx`
+          : `Nagelsalon_${periode.jaar}.xlsx`
+        : `Nagelsalon_AlleData.xlsx`;
+
       // Inkomsten
-      const incRows = [...inkomsten].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
+      const incRows = [...incFiltered].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
         "#": i + 1, "Datum": x.datum, "Behandeling": x.behandeling, "Klant": x.klant || "",
         "Betaalwijze": x.betaalwijze || "", "Prijs incl. BTW": x.prijs,
         "BTW-bedrag": x.btw, "Excl. BTW": x.exclBtw,
