@@ -3410,30 +3410,6 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         XLSX.utils.book_append_sheet(wb, wsKm, "Kilometers");
       }
 
-      // Klanten
-      if (klanten.length) {
-        const klRows = klanten.map((x, i) => ({ "#": i + 1, "Voornaam": x.voornaam, "Achternaam": x.achternaam || "", "Telefoon": x.telefoon || "", "Email": x.email || "", "Vaste behandeling": x.vasteBeh || "", "Notities": x.notities || "" }));
-        const wsKl = XLSX.utils.json_to_sheet(klRows);
-        styleHeader(wsKl, Object.keys(klRows[0])); autoWidth(wsKl, klRows);
-        XLSX.utils.book_append_sheet(wb, wsKl, "Klanten");
-      }
-
-      // Leveranciers
-      if (leveranciers.length) {
-        const levRows = leveranciers.map((x, i) => ({ "#": i + 1, "Bedrijf": x.bedrijf, "Contact": x.contact || "", "Telefoon": x.telefoon || "", "Email": x.email || "", "Categorie": x.categorie || "", "Notities": x.notities || "" }));
-        const wsLev = XLSX.utils.json_to_sheet(levRows);
-        styleHeader(wsLev, Object.keys(levRows[0])); autoWidth(wsLev, levRows);
-        XLSX.utils.book_append_sheet(wb, wsLev, "Leveranciers");
-      }
-
-      // Kleuren
-      if (kleuren.length) {
-        const kleurRows = kleuren.map((x, i) => ({ "#": i + 1, "Merk": x.merk, "Kleurnaam": x.kleurnaam, "Nummer": x.kleurnummer || "", "Type": x.type || "", "Aankoopdatum": x.aankoopdatum || "", "Prijs": x.prijs || 0, "Beoordeling": x.beoordeling || "", "Opmerking": x.opmerking || "", "Link": x.link || "" }));
-        const wsKleur = XLSX.utils.json_to_sheet(kleurRows);
-        styleHeader(wsKleur, Object.keys(kleurRows[0])); autoWidth(wsKleur, kleurRows);
-        XLSX.utils.book_append_sheet(wb, wsKleur, "Kleurenarchief");
-      }
-
       downloadXlsx(wb, `Nagelsalon_${new Date().getFullYear()}.xlsx`);
     } finally {
       setExporting(false);
@@ -3518,13 +3494,13 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       <Card>
         <SectionTitle>Exporteren voor boekhouder</SectionTitle>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.7 }}>
-          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, facturen, maandoverzicht, BTW-overzicht, kilometers, klanten, leveranciers én kleurenarchief.
+          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, facturen, maandoverzicht, BTW-overzicht en kilometers.
         </div>
         <Btn onClick={exportAlles} disabled={exporting} variant="success" fullWidth>
           {exporting ? "⏳ Bezig..." : "📥 Download boekhouding (.xlsx)"}
         </Btn>
         <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
-          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(facturen || []).length} facturen · {(ritten || []).length} ritten · {kleuren.length} kleuren
+          {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(facturen || []).length} facturen · {(ritten || []).length} ritten
         </div>
         {nucConfig?.serverUrl && (nucConfig?.viewerKey || nucConfig?.apiKey) ? (
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, marginTop: 10 }}>
