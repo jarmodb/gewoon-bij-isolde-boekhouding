@@ -3266,8 +3266,23 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
-  const [confirmVerwijder, setConfirmVerwijder] = useState(null); // index van te verwijderen behandeling
+  const [exportModal, setExportModal] = useState(false);
+  const [confirmVerwijder, setConfirmVerwijder] = useState(null);
   useEffect(() => setLocalPrijzen(prijslijst), [prijslijst]);
+
+  const huidigJaar = new Date().getFullYear();
+  const vorigJaar = huidigJaar - 1;
+  const huidigKwartaal = Math.floor(new Date().getMonth() / 3) + 1;
+
+  const periodeOpties = [
+    { label: `Q1 ${huidigJaar} (jan–mrt)`, maanden: [0,1,2], jaar: huidigJaar },
+    { label: `Q2 ${huidigJaar} (apr–jun)`, maanden: [3,4,5], jaar: huidigJaar },
+    { label: `Q3 ${huidigJaar} (jul–sep)`, maanden: [6,7,8], jaar: huidigJaar },
+    { label: `Q4 ${huidigJaar} (okt–dec)`, maanden: [9,10,11], jaar: huidigJaar },
+    { label: `Heel ${huidigJaar}`, maanden: null, jaar: huidigJaar },
+    { label: `Heel ${vorigJaar}`, maanden: null, jaar: vorigJaar },
+    { label: "Alle data", maanden: null, jaar: null },
+  ];
 
   const styleHeader = (ws, cols) => {
     cols.forEach((_, i) => {
@@ -3331,11 +3346,14 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       XLSX.utils.book_append_sheet(wb, wsInc, "Inkomsten");
 
       // Uitgaven
-      const uitgavenSorted = [...uitgaven].sort((a, b) => new Date(a.datum) - new Date(b.datum));
+      const uitgavenSorted = [...uitFiltered].sort((a, b) => new Date(a.datum) - new Date(b.datum));
       const uitRows = uitgavenSorted.map((x, i) => ({
         "#": i + 1, "Datum": x.datum, "Categorie": x.categorie, "Omschrijving": x.omschrijving || "",
         "Leverancier": x.leverancier || "", "Betaalwijze": x.betaalwijze || "",
         "Excl. BTW": x.bedragExcl, "Incl. BTW": x.bedragIncl,
+        "Notitie": x.notitie || "",
+        "BTW verlegd": x.btwVerlegd ? `${x.btwVerlegdPerc}% (rubriek ${x.btwVerlegdType || "4b"})` : "",
+        "BTW verlegd bedrag": x.btwVerlegd ? (x.btwVerlegdBedrag || 0) : "",
         "Bank datum": x.bankDatum || "", "Bank omschrijving": x.bankOmschrijving || "",
         "Bank bedrag": x.bankBedrag || "",
         "Bewijsstuk bekijken": x.bonPad ? "📎 Bekijk bon" : "",
@@ -3350,8 +3368,8 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       XLSX.utils.book_append_sheet(wb, wsUit, "Uitgaven");
 
       // Facturen
-      if (facturen?.length) {
-        const facturenSorted = [...facturen].sort((a, b) => new Date(a.datum) - new Date(b.datum));
+      if (facFiltered.length) {
+        const facturenSorted = [...facFiltered].sort((a, b) => new Date(a.datum) - new Date(b.datum));
         const factRows = facturenSorted.map((x, i) => ({
           "#": i + 1, "Factuurnr": x.nr, "Datum": x.datum, "Vervaldatum": x.vervalDatum || "",
           "Klant": x.klant || "", "Behandeling": x.behandeling || "", "Status": x.status || "",
@@ -3367,38 +3385,46 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         XLSX.utils.book_append_sheet(wb, wsFact, "Facturen");
       }
 
-      // Jaren waarin daadwerkelijk data voorkomt (voorkomt dat bijv. januari 2025
-      // en januari 2026 worden opgeteld als ze allebei "Januari" heten)
-      const jarenMetData = [...new Set(
-        [...inkomsten, ...uitgaven]
-          .map(x => x.datum && new Date(x.datum).getFullYear())
-          .filter(j => j && !isNaN(j))
+      // Maandoverzicht — alleen de maanden binnen de gekozen periode
+      const jarenInPeriode = [...new Set(
+        [...incFiltered, ...uitFiltered].map(x => x.datum && new Date(x.datum).getFullYear()).filter(Boolean)
       )].sort();
-      const jaren = jarenMetData.length ? jarenMetData : [new Date().getFullYear()];
+      const jarenMaand = jarenInPeriode.length ? jarenInPeriode : [huidigJaar];
+      const maandFilter = (jr, mi) => {
+        if (periode.jaar && jr !== periode.jaar) return false;
+        if (periode.maanden && !periode.maanden.includes(mi)) return false;
+        return true;
+      };
+      const maandRows = jarenMaand.flatMap(jr => MONTHS.map((m, mi) => {
+        if (!maandFilter(jr, mi)) return null;
+        const inc = incFiltered.filter(x => x.datum && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.prijs || 0), 0);
+        const uit = uitFiltered.filter(x => x.datum && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.bedragIncl || 0), 0);
+        return { "Jaar": jr, "Maand": m, "Inkomsten (€)": +inc.toFixed(2), "Uitgaven (€)": +uit.toFixed(2), "Winst/Verlies (€)": +(inc - uit).toFixed(2) };
+      }).filter(Boolean));
+      if (maandRows.length) {
+        const wsMaand = XLSX.utils.json_to_sheet(maandRows);
+        styleHeader(wsMaand, Object.keys(maandRows[0])); autoWidth(wsMaand, maandRows);
+        XLSX.utils.book_append_sheet(wb, wsMaand, "Maandoverzicht");
+      }
 
-      // Maandoverzicht (per jaar + maand, zodat meerdere jaren niet door elkaar lopen)
-      const maandRows = jaren.flatMap(jaar => MONTHS.map((m, mi) => {
-        const inc = inkomsten.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.prijs || 0), 0);
-        const uit = uitgaven.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.bedragIncl || 0), 0);
-        return { "Jaar": jaar, "Maand": m, "Inkomsten (€)": +inc.toFixed(2), "Uitgaven (€)": +uit.toFixed(2), "Winst/Verlies (€)": +(inc - uit).toFixed(2) };
-      }));
-      const wsMaand = XLSX.utils.json_to_sheet(maandRows);
-      styleHeader(wsMaand, Object.keys(maandRows[0])); autoWidth(wsMaand, maandRows);
-      XLSX.utils.book_append_sheet(wb, wsMaand, "Maandoverzicht");
-
-      // BTW overzicht (per jaar + maand)
-      const btwRows = jaren.flatMap(jaar => MONTHS.map((m, mi) => {
-        const ontvangen = inkomsten.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btw || 0), 0);
-        const betaald = uitgaven.filter(x => x.datum && new Date(x.datum).getFullYear() === jaar && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
-        return { "Jaar": jaar, "Maand": m, "BTW ontvangen": +ontvangen.toFixed(2), "BTW betaald": +betaald.toFixed(2), "Te betalen belastingdienst": +(ontvangen - betaald).toFixed(2) };
-      }));
-      const wsBtw = XLSX.utils.json_to_sheet(btwRows);
-      styleHeader(wsBtw, Object.keys(btwRows[0])); autoWidth(wsBtw, btwRows);
-      XLSX.utils.book_append_sheet(wb, wsBtw, "BTW overzicht");
+      // BTW overzicht
+      const btwRows = jarenMaand.flatMap(jr => MONTHS.map((m, mi) => {
+        if (!maandFilter(jr, mi)) return null;
+        const ontvangen = incFiltered.filter(x => x.datum && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btw || 0), 0);
+        const betaald = uitFiltered.filter(x => x.datum && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + ((x.bedragIncl - x.bedragExcl) || 0), 0);
+        const verlegd4b = uitFiltered.filter(x => x.datum && x.btwVerlegd && (x.btwVerlegdType||"4b")==="4b" && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
+        const verlegd4a = uitFiltered.filter(x => x.datum && x.btwVerlegd && x.btwVerlegdType==="4a" && new Date(x.datum).getFullYear() === jr && new Date(x.datum).getMonth() === mi).reduce((s, x) => s + (x.btwVerlegdBedrag || 0), 0);
+        return { "Jaar": jr, "Maand": m, "BTW ontvangen (1a)": +ontvangen.toFixed(2), "Voorbelasting (5b)": +betaald.toFixed(2), "Te betalen belastingdienst": +(ontvangen - betaald).toFixed(2), "BTW verlegd goederen (4b)": +verlegd4b.toFixed(2), "BTW verlegd diensten (4a)": +verlegd4a.toFixed(2) };
+      }).filter(Boolean));
+      if (btwRows.length) {
+        const wsBtw = XLSX.utils.json_to_sheet(btwRows);
+        styleHeader(wsBtw, Object.keys(btwRows[0])); autoWidth(wsBtw, btwRows);
+        XLSX.utils.book_append_sheet(wb, wsBtw, "BTW overzicht");
+      }
 
       // Kilometerregistratie
-      if (ritten?.length) {
-        const kmRows = [...ritten].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
+      if (kmFiltered.length) {
+        const kmRows = [...kmFiltered].sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((x, i) => ({
           "#": i + 1, "Datum": x.datum, "Van": x.van || "", "Naar": x.naar || "",
           "Omschrijving": x.omschrijving || "", "Type": x.type || "",
           "Retour": x.retour ? "Ja" : "Nee",
@@ -3410,7 +3436,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         XLSX.utils.book_append_sheet(wb, wsKm, "Kilometers");
       }
 
-      downloadXlsx(wb, `Nagelsalon_${new Date().getFullYear()}.xlsx`);
+      downloadXlsx(wb, bestandsnaam);
     } finally {
       setExporting(false);
     }
@@ -3494,11 +3520,31 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       <Card>
         <SectionTitle>Exporteren voor boekhouder</SectionTitle>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.7 }}>
-          Eén Excel-bestand met alle tabbladen: inkomsten, uitgaven, facturen, maandoverzicht, BTW-overzicht en kilometers.
+          Kies een periode en download het Excel-bestand met inkomsten, uitgaven, facturen, BTW-overzicht en kilometers.
         </div>
-        <Btn onClick={exportAlles} disabled={exporting} variant="success" fullWidth>
+        <Btn onClick={() => setExportModal(true)} disabled={exporting} variant="success" fullWidth>
           {exporting ? "⏳ Bezig..." : "📥 Download boekhouding (.xlsx)"}
         </Btn>
+
+        <Modal open={exportModal} onClose={() => setExportModal(false)} title="Kies periode voor export">
+          <div style={{ paddingBottom: 8 }}>
+            {periodeOpties.map((opt, i) => {
+              const isHuidigKwartaal = opt.maanden && opt.jaar === huidigJaar && Math.ceil((opt.maanden[0]+1)/3) === huidigKwartaal;
+              return (
+                <button key={i} onClick={() => exportAlles(opt)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                    width: "100%", background: isHuidigKwartaal ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.05)",
+                    border: `1.5px solid ${isHuidigKwartaal ? C.purple+"66" : "rgba(255,255,255,0.1)"}`,
+                    borderRadius: 12, padding: "14px 16px", color: "#fff", cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 14, fontWeight: 600, marginBottom: 8, textAlign: "left" }}>
+                  <span>{opt.label}</span>
+                  {isHuidigKwartaal && <Badge color={C.purple}>huidig kwartaal</Badge>}
+                  <span style={{ color: C.muted, fontSize: 12 }}>→</span>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
         <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
           {inkomsten.length} inkomsten · {uitgaven.length} uitgaven · {(facturen || []).length} facturen · {(ritten || []).length} ritten
         </div>
