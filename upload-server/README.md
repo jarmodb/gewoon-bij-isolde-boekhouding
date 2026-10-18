@@ -2,7 +2,15 @@
 
 Draait op de NUC, bereikbaar via Tailscale Funnel.
 
-## Eerste keer instellen
+## Snelle installatie (aanbevolen)
+
+Zet de map `upload-server` op de NUC en dubbelklik op **`installeer-nuc.bat`**.
+Het script installeert Node.js en Tailscale, zet de server in `C:\IsoldeServer`,
+vraagt om de sleutels, laat de server automatisch starten bij inloggen, plant de
+nachtelijke back-up in en zet Tailscale Funnel aan. Daarmee vervalt de handmatige
+installatie hieronder en is PM2 niet nodig.
+
+## Eerste keer instellen (handmatig)
 
 ### 1. Node.js installeren op de NUC
 Download en installeer Node.js van https://nodejs.org (LTS versie)
