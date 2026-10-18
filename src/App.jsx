@@ -23,8 +23,8 @@ const TREATMENTS = [
 ];
 
 const CATEGORIES = [
-  "Materialen & producten","Huur & ruimte","Verzekering",
-  "Marketing & reclame","Apparatuur & gereedschap","Opleiding & cursussen",
+  "Inkoop producten","Huur & ruimte","Verzekering",
+  "Marketing & reclame","Apparatuur & gereedschap","Kleine aanschaffingen","Opleiding & cursussen","Bankkosten Knab",
   "Administratie & software","Telefoon & internet","Energie & water",
   "Vervoer","Overig",
 ];
@@ -3371,7 +3371,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
       const uitRows = uitgavenSorted.map((x, i) => ({
         "#": i + 1, "Datum": x.datum, "Categorie": x.categorie, "Omschrijving": x.omschrijving || "",
         "Leverancier": x.leverancier || "", "Betaalwijze": x.betaalwijze || "",
-        "Excl. BTW": x.bedragExcl, "Incl. BTW": x.bedragIncl,
+        "Excl. BTW": x.bedragExcl, "BTW": +((x.bedragIncl - x.bedragExcl) || 0).toFixed(2), "Incl. BTW": x.bedragIncl,
         "Notitie": x.notitie || "",
         "BTW verlegd": x.btwVerlegd ? `${x.btwVerlegdPerc}% (rubriek ${x.btwVerlegdType || "4b"})` : "",
         "BTW verlegd bedrag": x.btwVerlegd ? (x.btwVerlegdBedrag || 0) : "",
@@ -4266,7 +4266,7 @@ export default function App() {
       const db = await loadAll();
       dbRef.current = db || {};
       if (db.inkomsten) setInkomsten(db.inkomsten);
-      if (db.uitgaven) setUitgaven(db.uitgaven);
+      if (db.uitgaven) setUitgaven(db.uitgaven.map(u => u.categorie === "Materialen & producten" ? { ...u, categorie: "Inkoop producten" } : u));
       if (db.klanten) setKlanten(db.klanten);
       if (db.leveranciers) setLeveranciers(db.leveranciers);
       if (db.prijslijst) setPrijslijst(db.prijslijst);
@@ -4288,7 +4288,7 @@ export default function App() {
       if (isSavingRef.current) return;
       dbRef.current = nieuweData;
       if (nieuweData.inkomsten) setInkomsten(nieuweData.inkomsten);
-      if (nieuweData.uitgaven) setUitgaven(nieuweData.uitgaven);
+      if (nieuweData.uitgaven) setUitgaven(nieuweData.uitgaven.map(u => u.categorie === "Materialen & producten" ? { ...u, categorie: "Inkoop producten" } : u));
       if (nieuweData.klanten) setKlanten(nieuweData.klanten);
       if (nieuweData.leveranciers) setLeveranciers(nieuweData.leveranciers);
       if (nieuweData.prijslijst) setPrijslijst(nieuweData.prijslijst);
