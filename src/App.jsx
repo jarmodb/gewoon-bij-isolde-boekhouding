@@ -2773,23 +2773,46 @@ function GoogleAgendaKoppeling({ salonInst, onUpdate }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// KNAB IMPORT + AFSTEMMING
+// BANK (Knab mutaties + controle)
 // ════════════════════════════════════════════════════════════════════════════
-function KnabImport({ onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave, inkomsten, uitgaven }) {
+const BANK_BESTEMMINGEN = [
+  { id: "bankkosten", icon: "🏦", label: "Rente & kosten Knab" },
+  { id: "prive", icon: "👤", label: "Privé storting / opname" },
+  { id: "btw", icon: "🧾", label: "BTW betaling / teruggaaf" },
+  { id: "sparen", icon: "🐖", label: "Overboeking sparen" },
+  { id: "ib", icon: "💶", label: "Inkomstenbelasting" },
+  { id: "overig", icon: "📌", label: "Overig" },
+];
+const bestemmingTekst = (id) => {
+  if (id === "inkomst") return "Inkomst";
+  if (id === "uitgave") return "Uitgave";
+  return BANK_BESTEMMINGEN.find(b => b.id === id)?.label || "";
+};
+const bestemmingLabel = (id) => {
+  if (id === "inkomst") return "💰 Inkomst";
+  if (id === "uitgave") return "🧾 Uitgave";
+  const b = BANK_BESTEMMINGEN.find(x => x.id === id);
+  return b ? `${b.icon} ${b.label}` : "";
+};
+const stripBank = (x) => {
+  const { bankVerifieerd, bankDatum, bankOmschrijving, bankBedrag, bankMutatieId, ...rest } = x;
+  return rest;
+};
+
+function Bank({ bankmutaties, inkomsten, uitgaven, onUpdate }) {
   const fileRef = useRef(null);
-  const [modal, setModal] = useState(false);
-  const [transacties, setTransacties] = useState([]);
-  // selecties: { [transactieId]: { mode: 'koppel'|'nieuw'|'skip', match?, soort? } }
-  const [selecties, setSelecties] = useState({});
-  // zoekPicker: { [transactieId]: { open: bool, tekst: string } }
-  const [zoekPicker, setZoekPicker] = useState({});
+  const [filter, setFilter] = useState("open");
+  const [actief, setActief] = useState(null);
+  const [zoek, setZoek] = useState("");
+  const [melding, setMelding] = useState("");
+  const [toonZonderBank, setToonZonderBank] = useState(false);
 
   const parseRegel = (regel, sep) => {
     const cols = [];
-    let veld = '', inQ = false;
+    let veld = "", inQ = false;
     for (const c of regel) {
       if (c === '"') { inQ = !inQ; }
-      else if (c === sep && !inQ) { cols.push(veld); veld = ''; }
+      else if (c === sep && !inQ) { cols.push(veld); veld = ""; }
       else { veld += c; }
     }
     cols.push(veld);
@@ -2797,287 +2820,370 @@ function KnabImport({ onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave, 
   };
 
   const parseCsv = (tekst) => {
-    const regels = tekst.replace(/\r/g, '').split('\n').filter(r => r.trim());
+    const regels = tekst.replace(/\r/g, "").split("\n").filter(r => r.trim());
     if (!regels.length) return [];
-    const sep = regels[0].includes(';') ? ';' : ',';
+    const sep = regels[0].includes(";") ? ";" : ",";
     const lijst = [];
     for (let i = 1; i < regels.length; i++) {
       const k = parseRegel(regels[i], sep);
       if (k.length < 7) continue;
       const [datumRaw, naam, , , , afBij, bedragRaw, , ...rest] = k;
-      const delen = datumRaw.trim().split('-');
+      const delen = datumRaw.trim().split("-");
       if (delen.length !== 3) continue;
       const [dag, mnd, jaar] = delen;
-      const datum = `${jaar}-${mnd.padStart(2, '0')}-${dag.padStart(2, '0')}`;
-      const bedrag = parseFloat(bedragRaw.trim().replace(/\./g, '').replace(',', '.')) || 0;
+      const datum = `${jaar}-${mnd.padStart(2, "0")}-${dag.padStart(2, "0")}`;
+      const bedrag = parseFloat(bedragRaw.trim().replace(/\./g, "").replace(",", ".")) || 0;
       if (bedrag === 0) continue;
-      const isBij = afBij.trim().toLowerCase() === 'bij' || afBij.trim().toUpperCase() === 'C';
-      const mededelingen = rest.join(' ').trim();
-      const omschrijving = (mededelingen || naam.trim()).replace(/\s+/g, ' ').slice(0, 60);
-      lijst.push({ id: `k${i}`, datum, naam: naam.trim(), bedrag, isBij, omschrijving });
+      const isBij = afBij.trim().toLowerCase() === "bij" || afBij.trim().toUpperCase() === "C";
+      const mededelingen = rest.join(" ").trim();
+      const omschrijving = (mededelingen || naam.trim()).replace(/\s+/g, " ").slice(0, 60);
+      lijst.push({ datum, naam: naam.trim(), bedrag: Math.abs(bedrag), isBij, omschrijving });
     }
     return lijst;
-  };
-
-  // Zoek de beste match op bedrag (±€0.02) gesorteerd op datumafstand
-  const vindMatch = (t, gebruikteIds) => {
-    const kandidaten = (t.isBij ? inkomsten : uitgaven)
-      .filter(k => !k.bankVerifieerd && !gebruikteIds.has(k.id));
-    const veld = t.isBij ? 'prijs' : 'bedragIncl';
-    return kandidaten
-      .filter(k => Math.abs((parseFloat(k[veld]) || 0) - t.bedrag) < 0.02)
-      .sort((a, b) =>
-        Math.abs(new Date(a.datum) - new Date(t.datum)) -
-        Math.abs(new Date(b.datum) - new Date(t.datum))
-      )[0] || null;
   };
 
   const handleFile = (e) => {
     const bestand = e.target.files?.[0];
     if (!bestand) return;
-    e.target.value = '';
+    e.target.value = "";
     const reader = new FileReader();
     reader.onload = ev => {
       const lijst = parseCsv(ev.target.result);
-      setTransacties(lijst);
-      const sel = {};
-      const gebruikteIds = new Set();
+      if (!lijst.length) { setMelding("Geen transacties gevonden in dit bestand."); return; }
+      const bestaand = new Set(bankmutaties.map(m => m.key));
+      const teller = {};
+      const nieuw = [];
       lijst.forEach(t => {
-        const match = vindMatch(t, gebruikteIds);
-        if (match) {
-          gebruikteIds.add(match.id);
-          sel[t.id] = { mode: 'koppel', match, soort: t.isBij ? 'inkomst' : 'uitgave' };
-        } else {
-          sel[t.id] = { mode: 'nieuw', soort: t.isBij ? 'inkomst' : 'uitgave' };
-        }
+        const basis = `${t.datum}|${t.isBij ? "+" : "-"}${t.bedrag.toFixed(2)}|${t.naam}|${t.omschrijving}`;
+        teller[basis] = (teller[basis] || 0) + 1;
+        const key = `${basis}#${teller[basis]}`;
+        if (bestaand.has(key)) return;
+        nieuw.push({ id: uid(), key, ...t, bestemming: null, koppelId: null });
       });
-      setSelecties(sel);
-      setModal(true);
+      if (nieuw.length) onUpdate({ bankmutaties: [...bankmutaties, ...nieuw] });
+      setMelding(`${nieuw.length} nieuwe mutaties toegevoegd, ${lijst.length - nieuw.length} stonden er al.`);
+      setFilter("open");
     };
-    reader.readAsText(bestand, 'UTF-8');
+    reader.readAsText(bestand, "UTF-8");
   };
 
-  const setMode = (id, mode) => setSelecties(s => ({ ...s, [id]: { ...s[id], mode } }));
-  const setSoort = (id, soort) => setSelecties(s => ({ ...s, [id]: { ...s[id], soort } }));
-  const setMatch = (transId, match, soort) => {
-    setSelecties(s => ({ ...s, [transId]: { ...s[transId], match, soort } }));
-    setZoekPicker(p => ({ ...p, [transId]: { open: false, tekst: '' } }));
+  const boekingVan = (m) => {
+    if (!m.koppelId) return null;
+    return (m.bestemming === "inkomst" ? inkomsten : m.bestemming === "uitgave" ? uitgaven : [])
+      .find(x => x.id === m.koppelId) || null;
   };
-  const togglePicker = (id) => setZoekPicker(p => ({
-    ...p, [id]: { open: !p[id]?.open, tekst: p[id]?.tekst || '' }
-  }));
-  const setPickerTekst = (id, tekst) => setZoekPicker(p => ({ ...p, [id]: { ...p[id], tekst } }));
+  const isVerwerkt = (m) => !!m.bestemming &&
+    ((m.bestemming !== "inkomst" && m.bestemming !== "uitgave") || !!boekingVan(m));
 
-  const bankInfo = (t) => ({ bankVerifieerd: true, bankDatum: t.datum, bankOmschrijving: t.omschrijving, bankBedrag: t.bedrag });
+  const kandidaten = (m) => {
+    const veld = m.isBij ? "prijs" : "bedragIncl";
+    return (m.isBij ? inkomsten : uitgaven)
+      .filter(k => !k.bankVerifieerd)
+      .map(k => ({
+        k,
+        exact: Math.abs((parseFloat(k[veld]) || 0) - m.bedrag) < 0.02,
+        afstand: Math.abs(new Date(k.datum) - new Date(m.datum)),
+      }))
+      .sort((a, b) => (Number(b.exact) - Number(a.exact)) || (a.afstand - b.afstand));
+  };
 
-  const importeer = () => {
-    transacties.forEach(t => {
-      const sel = selecties[t.id];
-      if (!sel || sel.mode === 'skip') return;
-      if (sel.mode === 'koppel' && sel.match) {
-        const bijgewerkt = { ...sel.match, ...bankInfo(t) };
-        if (sel.soort === 'inkomst') onEditInkomst(bijgewerkt);
-        else onEditUitgave(bijgewerkt);
-      } else if (sel.mode === 'nieuw') {
-        if (sel.soort === 'inkomst') {
-          onAddInkomst({ id: uid(), datum: t.datum, behandeling: t.omschrijving,
-            klant: '', betaalwijze: 'Pin', bonPad: '', ...bankInfo(t),
-            prijs: t.bedrag, btw: +(t.bedrag / 1.21 * 0.21).toFixed(2),
-            exclBtw: +(t.bedrag / 1.21).toFixed(2) });
-        } else {
-          onAddUitgave({ id: uid(), datum: t.datum, categorie: 'Overig',
-            omschrijving: t.omschrijving, leverancier: t.naam,
-            betaalwijze: 'Pin', bonPad: '', ...bankInfo(t),
-            bedragExcl: +(t.bedrag / 1.21).toFixed(2), bedragIncl: t.bedrag });
-        }
-      }
+  const bankInfo = (m) => ({
+    bankVerifieerd: true, bankDatum: m.datum, bankOmschrijving: m.omschrijving,
+    bankBedrag: m.bedrag, bankMutatieId: m.id,
+  });
+
+  const ontkoppelUpdates = (m) => {
+    const upd = {};
+    const b = boekingVan(m);
+    if (b && m.bestemming === "inkomst") upd.inkomsten = inkomsten.map(x => x.id === b.id ? stripBank(x) : x);
+    if (b && m.bestemming === "uitgave") upd.uitgaven = uitgaven.map(x => x.id === b.id ? stripBank(x) : x);
+    return upd;
+  };
+
+  const sluit = () => { setActief(null); setZoek(""); };
+
+  const koppel = (m, boeking) => {
+    const soort = m.isBij ? "inkomst" : "uitgave";
+    const upd = { bankmutaties: bankmutaties.map(x => x.id === m.id ? { ...x, bestemming: soort, koppelId: boeking.id } : x) };
+    if (m.isBij) upd.inkomsten = inkomsten.map(x => x.id === boeking.id ? { ...x, ...bankInfo(m) } : x);
+    else upd.uitgaven = uitgaven.map(x => x.id === boeking.id ? { ...x, ...bankInfo(m) } : x);
+    onUpdate(upd);
+    sluit();
+  };
+
+  const nieuweBoeking = (m) => {
+    const id = uid();
+    const soort = m.isBij ? "inkomst" : "uitgave";
+    const upd = { bankmutaties: bankmutaties.map(x => x.id === m.id ? { ...x, bestemming: soort, koppelId: id } : x) };
+    if (m.isBij) {
+      upd.inkomsten = [...inkomsten, { id, datum: m.datum, behandeling: m.omschrijving, klant: "",
+        betaalwijze: "Pin", bonPad: "", ...bankInfo(m), prijs: m.bedrag,
+        btw: +(m.bedrag / 1.21 * 0.21).toFixed(2), exclBtw: +(m.bedrag / 1.21).toFixed(2) }];
+    } else {
+      upd.uitgaven = [...uitgaven, { id, datum: m.datum, categorie: "Overig", omschrijving: m.omschrijving,
+        leverancier: m.naam, betaalwijze: "Pin", bonPad: "", ...bankInfo(m),
+        bedragExcl: +(m.bedrag / 1.21).toFixed(2), bedragIncl: m.bedrag }];
+    }
+    onUpdate(upd);
+    sluit();
+  };
+
+  const zetCategorie = (m, bestemming) => {
+    onUpdate({ bankmutaties: bankmutaties.map(x => x.id === m.id ? { ...x, bestemming, koppelId: null } : x) });
+    sluit();
+  };
+
+  const ontkoppel = (m) => {
+    onUpdate({
+      bankmutaties: bankmutaties.map(x => x.id === m.id ? { ...x, bestemming: null, koppelId: null } : x),
+      ...ontkoppelUpdates(m),
     });
-    setModal(false); setTransacties([]); setSelecties({});
   };
 
-  const aantalActief = Object.values(selecties).filter(s => s?.mode !== 'skip').length;
+  const verwijder = (m) => {
+    if (!window.confirm("Deze bankmutatie uit de app verwijderen? Bij een nieuwe import komt ze weer terug.")) return;
+    onUpdate({ bankmutaties: bankmutaties.filter(x => x.id !== m.id), ...ontkoppelUpdates(m) });
+    sluit();
+  };
+
+  const voorstellen = (() => {
+    const gebruikt = new Set();
+    const res = [];
+    bankmutaties.filter(m => !isVerwerkt(m)).forEach(m => {
+      const c = kandidaten(m).find(x => x.exact && !gebruikt.has(x.k.id));
+      if (c) { gebruikt.add(c.k.id); res.push({ m, k: c.k }); }
+    });
+    return res;
+  })();
+
+  const autoKoppel = () => {
+    if (!voorstellen.length) return;
+    if (!window.confirm(`${voorstellen.length} mutaties automatisch koppelen aan de boeking met hetzelfde bedrag?`)) return;
+    const perMutatie = Object.fromEntries(voorstellen.map(v => [v.m.id, v]));
+    const perBoeking = Object.fromEntries(voorstellen.map(v => [v.k.id, v.m]));
+    const upd = {
+      bankmutaties: bankmutaties.map(x => perMutatie[x.id]
+        ? { ...x, bestemming: x.isBij ? "inkomst" : "uitgave", koppelId: perMutatie[x.id].k.id } : x),
+    };
+    if (voorstellen.some(v => v.m.isBij)) {
+      upd.inkomsten = inkomsten.map(x => perBoeking[x.id]?.isBij ? { ...x, ...bankInfo(perBoeking[x.id]) } : x);
+    }
+    if (voorstellen.some(v => !v.m.isBij)) {
+      upd.uitgaven = uitgaven.map(x => perBoeking[x.id] && !perBoeking[x.id].isBij ? { ...x, ...bankInfo(perBoeking[x.id]) } : x);
+    }
+    onUpdate(upd);
+  };
+
+  const open = bankmutaties.filter(m => !isVerwerkt(m));
+  const klaar = bankmutaties.filter(m => isVerwerkt(m));
+  const lijst = (filter === "open" ? open : filter === "klaar" ? klaar : bankmutaties)
+    .slice().sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+
+  const zonderBank = (arr, veld) => arr
+    .filter(x => !x.bankVerifieerd && !["Contant", "Cadeau"].includes(x.betaalwijze) && (parseFloat(x[veld]) || 0) > 0)
+    .sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+  const incZonder = zonderBank(inkomsten, "prijs");
+  const uitZonder = zonderBank(uitgaven, "bedragIncl");
+
+  const m = bankmutaties.find(x => x.id === actief);
 
   return (
-    <>
-      <Card>
-        <SectionTitle>Knab bankafstemming</SectionTitle>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.7 }}>
-          Download een CSV uit je Knab zakelijke rekening via <b>Transacties → Exporteren → CSV</b>.
-          De app zoekt automatisch de bijbehorende boeking op en koppelt ze.
-        </div>
-        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
-        <Btn onClick={() => fileRef.current?.click()} fullWidth variant="secondary">
-          🏦 Knab CSV importeren
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>🏦 Bankgegevens</div>
+        <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleFile} />
+        <Btn small onClick={() => fileRef.current?.click()}>CSV importeren</Btn>
+      </div>
+
+      <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.7 }}>
+        Download een CSV uit je Knab zakelijke rekening via <b>Transacties → Exporteren → CSV</b>.
+        Elke mutatie moet gekoppeld worden aan een inkomst of uitgave, of een bestemming krijgen
+        (privé, BTW, sparen, ...). Zo blijft er nooit een mutatie liggen.
+      </div>
+
+      {melding && (
+        <div style={{ fontSize: 12, color: C.green, marginBottom: 12 }}>✓ {melding}</div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <Card style={{ flex: 1, marginBottom: 0, padding: 12, textAlign: "center",
+          border: `1px solid ${open.length ? C.orange + "66" : C.border}` }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: open.length ? C.orange : C.green }}>{open.length}</div>
+          <div style={{ fontSize: 11, color: C.muted }}>nog te verwerken</div>
+        </Card>
+        <Card style={{ flex: 1, marginBottom: 0, padding: 12, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: C.green }}>{klaar.length}</div>
+          <div style={{ fontSize: 11, color: C.muted }}>verwerkt</div>
+        </Card>
+      </div>
+
+      {voorstellen.length > 0 && (
+        <Btn onClick={autoKoppel} fullWidth variant="secondary" style={{ marginBottom: 14 }}>
+          🔗 Automatisch koppelen ({voorstellen.length} voorstellen op bedrag)
         </Btn>
-      </Card>
+      )}
 
-      <Modal open={modal} onClose={() => setModal(false)} title={`${transacties.length} banktransacties`}>
-        {transacties.length === 0
-          ? <EmptyState icon="🏦" text="Geen transacties gevonden in dit bestand" />
-          : <>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>
-              🔗 <b>Koppelen</b> = match aan bestaande boeking &nbsp;·&nbsp; ➕ <b>Nieuw</b> = nieuwe boeking aanmaken
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {[["open", "Te verwerken"], ["klaar", "Verwerkt"], ["alle", "Alle"]].map(([f, l]) => (
+          <button key={f} onClick={() => setFilter(f)} style={{
+            flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 12, fontWeight: 700,
+            border: "none", cursor: "pointer", fontFamily: "inherit",
+            background: filter === f ? `linear-gradient(135deg,${C.pink},${C.purple})` : "rgba(255,255,255,0.07)",
+            color: filter === f ? "#fff" : C.muted,
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {lijst.length === 0 ? (
+        <EmptyState icon="🏦" text={bankmutaties.length === 0
+          ? "Nog geen bankmutaties — importeer een Knab CSV"
+          : filter === "open" ? "Alles is verwerkt 🎉" : "Geen mutaties"} />
+      ) : lijst.map(t => {
+        const verwerkt = isVerwerkt(t);
+        return (
+          <Card key={t.id} onClick={() => setActief(t.id)} style={{ padding: 14, marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.omschrijving}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>{fmtDate(t.datum)} · {t.naam}</div>
+                {verwerkt
+                  ? <Badge color={C.purple}>{bestemmingLabel(t.bestemming)}</Badge>
+                  : <Badge color={C.orange}>⚠️ Nog te verwerken</Badge>}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 900, color: t.isBij ? C.green : C.red, flexShrink: 0 }}>
+                {t.isBij ? "+" : "−"}{fmt(t.bedrag)}
+              </div>
             </div>
-            {transacties.map(t => {
-              const sel = selecties[t.id] || { mode: 'nieuw', soort: t.isBij ? 'inkomst' : 'uitgave' };
-              const matchItem = sel.match;
-              return (
-                <div key={t.id} style={{
-                  background: sel.mode === 'skip' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
-                  borderRadius: 14, padding: '12px 14px', marginBottom: 10,
-                  border: `1px solid ${sel.mode === 'koppel' ? C.purple + '50' : sel.mode === 'nieuw' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'}`,
-                  opacity: sel.mode === 'skip' ? 0.45 : 1,
-                }}>
-                  {/* Banktransactie header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {t.omschrijving}
-                      </div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(t.datum)} · {t.naam}</div>
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 900, color: t.isBij ? C.green : C.red, flexShrink: 0 }}>
-                      {t.isBij ? '+' : '−'}{fmt(t.bedrag)}
-                    </div>
+          </Card>
+        );
+      })}
+
+      {/* Omgekeerde controle: boekingen zonder bankmutatie */}
+      {bankmutaties.length > 0 && (
+        <Card style={{ marginTop: 16 }}>
+          <SectionTitle>Boekingen zonder bankmutatie</SectionTitle>
+          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+            {incZonder.length} inkomsten en {uitZonder.length} uitgaven hebben nog geen bankmutatie
+            (contant en cadeau tellen niet mee).
+          </div>
+          {(incZonder.length + uitZonder.length) > 0 && (
+            <button onClick={() => setToonZonderBank(!toonZonderBank)} style={{
+              marginTop: 8, background: "none", border: "none", color: C.label, cursor: "pointer",
+              fontSize: 12, fontWeight: 700, fontFamily: "inherit", padding: 0 }}>
+              {toonZonderBank ? "▲ Verbergen" : "▼ Tonen"}
+            </button>
+          )}
+          {toonZonderBank && [["💰", incZonder, "prijs"], ["🧾", uitZonder, "bedragIncl"]].flatMap(([icon, arr, veld]) =>
+            arr.slice(0, 50).map(x => (
+              <div key={x.id} style={{ display: "flex", justifyContent: "space-between", gap: 10,
+                fontSize: 12, color: "#fff", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {icon} {fmtDate(x.datum)} · {x.behandeling || x.omschrijving || x.categorie}
+                </span>
+                <span style={{ color: C.muted }}>{fmt(x[veld])}</span>
+              </div>
+            ))
+          )}
+        </Card>
+      )}
+
+      <Modal open={!!m} onClose={sluit} title="Mutatie verwerken">
+        {m && (() => {
+          const verwerkt = isVerwerkt(m);
+          const boeking = boekingVan(m);
+          const q = zoek.toLowerCase();
+          const kand = kandidaten(m)
+            .filter(({ k }) => !q
+              || (k.behandeling || k.omschrijving || k.categorie || "").toLowerCase().includes(q)
+              || (k.klant || k.leverancier || "").toLowerCase().includes(q)
+              || String(k.prijs || k.bedragIncl || "").includes(q))
+            .slice(0, 10);
+          return (
+            <div>
+              <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{m.omschrijving}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{fmtDate(m.datum)} · {m.naam}</div>
                   </div>
-
-                  {/* Mode knoppen */}
-                  <div style={{ display: 'flex', gap: 6, marginBottom: sel.mode !== 'skip' ? 10 : 0 }}>
-                    {[
-                      ['koppel', `🔗 Koppelen${matchItem ? ' ✓' : ''}`, C.purple],
-                      ['nieuw', '➕ Nieuw aanmaken', C.green],
-                      ['skip', '⏭ Overslaan', C.muted],
-                    ].map(([m, label, color]) => (
-                      <button key={m} onClick={() => setMode(t.id, m)} style={{
-                        flex: 1, padding: '6px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
-                        fontSize: 11, fontWeight: 700,
-                        border: `1px solid ${sel.mode === m ? color + '80' : 'rgba(255,255,255,0.1)'}`,
-                        background: sel.mode === m ? color + '20' : 'transparent',
-                        color: sel.mode === m ? color : C.muted,
-                      }}>{label}</button>
-                    ))}
+                  <div style={{ fontSize: 16, fontWeight: 900, color: m.isBij ? C.green : C.red, flexShrink: 0 }}>
+                    {m.isBij ? "+" : "−"}{fmt(m.bedrag)}
                   </div>
+                </div>
+              </div>
 
-                  {/* Koppelen: toon gevonden match + picker */}
-                  {sel.mode === 'koppel' && (() => {
-                    const picker = zoekPicker[t.id] || { open: false, tekst: '' };
-                    const zoekLijst = (sel.soort === 'inkomst' ? inkomsten : uitgaven)
-                      .filter(k => !k.bankVerifieerd)
-                      .filter(k => {
-                        if (!picker.tekst) return true;
-                        const q = picker.tekst.toLowerCase();
-                        return (k.behandeling || k.omschrijving || k.categorie || '').toLowerCase().includes(q)
-                          || (k.klant || k.leverancier || '').toLowerCase().includes(q)
-                          || String(k.prijs || k.bedragIncl || '').includes(q);
-                      })
-                      .sort((a, b) => Math.abs(new Date(a.datum) - new Date(t.datum)) - Math.abs(new Date(b.datum) - new Date(t.datum)))
-                      .slice(0, 8);
-                    return (
-                      <div>
-                        <div style={{
-                          background: matchItem ? C.purple + '15' : 'rgba(248,113,113,0.1)',
-                          border: `1px solid ${matchItem ? C.purple + '40' : C.red + '40'}`,
-                          borderRadius: 10, padding: '10px 12px', marginBottom: 6,
-                        }}>
-                          {matchItem ? (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 11, color: C.purple, fontWeight: 800, marginBottom: 2 }}>🔗 Gekoppelde boeking</div>
-                                <div style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>
-                                  {matchItem.behandeling || matchItem.omschrijving || matchItem.categorie}
-                                </div>
-                                <div style={{ fontSize: 11, color: C.muted }}>
-                                  {fmtDate(matchItem.datum)}
-                                  {matchItem.klant ? ` · ${matchItem.klant}` : ''}
-                                  {matchItem.leverancier ? ` · ${matchItem.leverancier}` : ''}
-                                </div>
-                              </div>
-                              <Badge color={C.purple}>{fmt(matchItem.prijs || matchItem.bedragIncl)}</Badge>
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 12, color: C.red }}>⚠️ Geen match gevonden — kies hieronder een boeking.</div>
-                          )}
-                        </div>
-                        <button onClick={() => togglePicker(t.id)} style={{
-                          width: '100%', padding: '6px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
-                          fontSize: 11, fontWeight: 700, border: '1px solid rgba(255,255,255,0.12)',
-                          background: 'rgba(255,255,255,0.05)', color: C.muted,
-                        }}>
-                          {picker.open ? '▲ Sluiten' : '🔍 Andere boeking kiezen'}
-                        </button>
-                        {picker.open && (
-                          <div style={{ marginTop: 8 }}>
-                            <input
-                              value={picker.tekst}
-                              onChange={e => setPickerTekst(t.id, e.target.value)}
-                              placeholder="Zoek op naam, behandeling, bedrag..."
-                              style={{ ...inputStyle, fontSize: 13, marginBottom: 6 }}
-                              autoFocus
-                            />
-                            {zoekLijst.length === 0
-                              ? <div style={{ fontSize: 12, color: C.muted, padding: '8px 0' }}>Geen boekingen gevonden</div>
-                              : zoekLijst.map(k => (
-                                <div key={k.id} onClick={() => setMatch(t.id, k, sel.soort)}
-                                  style={{
-                                    padding: '8px 10px', borderRadius: 8, marginBottom: 4, cursor: 'pointer',
-                                    background: matchItem?.id === k.id ? C.purple + '25' : 'rgba(255,255,255,0.05)',
-                                    border: `1px solid ${matchItem?.id === k.id ? C.purple + '60' : 'rgba(255,255,255,0.08)'}`,
-                                  }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <div>
-                                      <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
-                                        {k.behandeling || k.omschrijving || k.categorie}
-                                      </div>
-                                      <div style={{ fontSize: 11, color: C.muted }}>
-                                        {fmtDate(k.datum)}{k.klant ? ` · ${k.klant}` : ''}{k.leverancier ? ` · ${k.leverancier}` : ''}
-                                      </div>
-                                    </div>
-                                    <span style={{ fontSize: 13, fontWeight: 800, color: sel.soort === 'inkomst' ? C.green : C.red }}>
-                                      {fmt(k.prijs || k.bedragIncl)}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))
-                            }
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Nieuw: toon soort keuze */}
-                  {sel.mode === 'nieuw' && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {[['inkomst', '💰 Inkomst', C.green], ['uitgave', '🧾 Uitgave', C.red]].map(([s, l, c]) => (
-                        <button key={s} onClick={() => setSoort(t.id, s)} style={{
-                          flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
-                          fontSize: 12, fontWeight: 700,
-                          border: `1px solid ${sel.soort === s ? c + '80' : 'rgba(255,255,255,0.1)'}`,
-                          background: sel.soort === s ? c + '20' : 'transparent',
-                          color: sel.soort === s ? c : C.muted,
-                        }}>{l}</button>
-                      ))}
+              {verwerkt ? (
+                <>
+                  <div style={{ fontSize: 13, color: C.label, marginBottom: 6, fontWeight: 700 }}>
+                    Verwerkt als {bestemmingLabel(m.bestemming)}
+                  </div>
+                  {boeking && (
+                    <div style={{ fontSize: 13, color: "#fff", marginBottom: 12 }}>
+                      {boeking.behandeling || boeking.omschrijving || boeking.categorie}
+                      <span style={{ color: C.muted }}> · {fmtDate(boeking.datum)}{boeking.klant ? ` · ${boeking.klant}` : ""}{boeking.leverancier ? ` · ${boeking.leverancier}` : ""}</span>
                     </div>
                   )}
-                </div>
-              );
-            })}
-            <div style={{ position: 'sticky', bottom: 0, paddingTop: 14, paddingBottom: 4,
-              background: 'linear-gradient(to top, #1a0635 85%, transparent)' }}>
-              <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginBottom: 10 }}>
-                {Object.values(selecties).filter(s => s?.mode === 'koppel' && s.match).length} gekoppeld ·{' '}
-                {Object.values(selecties).filter(s => s?.mode === 'nieuw').length} nieuw ·{' '}
-                {Object.values(selecties).filter(s => s?.mode === 'skip').length} overgeslagen
-              </div>
-              <Btn onClick={importeer} fullWidth disabled={aantalActief === 0}>
-                ✓ Verwerken
-              </Btn>
+                  <Btn onClick={() => ontkoppel(m)} fullWidth variant="secondary">↩ Ontkoppelen / opnieuw verwerken</Btn>
+                </>
+              ) : (
+                <>
+                  <SectionTitle>Koppel aan {m.isBij ? "inkomst" : "uitgave"}</SectionTitle>
+                  <input value={zoek} onChange={e => setZoek(e.target.value)}
+                    placeholder="Zoek op naam, omschrijving, bedrag..."
+                    style={{ ...inputStyle, fontSize: 13, marginBottom: 8 }} />
+                  {kand.length === 0
+                    ? <div style={{ fontSize: 12, color: C.muted, padding: "6px 0 12px" }}>Geen vrije boekingen gevonden</div>
+                    : kand.map(({ k, exact }) => (
+                      <div key={k.id} onClick={() => koppel(m, k)} style={{
+                        padding: "8px 10px", borderRadius: 8, marginBottom: 4, cursor: "pointer",
+                        background: exact ? C.purple + "20" : "rgba(255,255,255,0.05)",
+                        border: `1px solid ${exact ? C.purple + "60" : "rgba(255,255,255,0.08)"}`,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>
+                              {k.behandeling || k.omschrijving || k.categorie}{exact ? " ✓ zelfde bedrag" : ""}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.muted }}>
+                              {fmtDate(k.datum)}{k.klant ? ` · ${k.klant}` : ""}{k.leverancier ? ` · ${k.leverancier}` : ""}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: m.isBij ? C.green : C.red }}>
+                            {fmt(k.prijs || k.bedragIncl)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  <div style={{ margin: "12px 0" }}>
+                    <Btn onClick={() => nieuweBoeking(m)} fullWidth variant="secondary">
+                      ➕ Nieuwe {m.isBij ? "inkomst" : "uitgave"} aanmaken
+                    </Btn>
+                  </div>
+
+                  <SectionTitle>Of geef een bestemming</SectionTitle>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {BANK_BESTEMMINGEN.map(b => (
+                      <button key={b.id} onClick={() => zetCategorie(m, b.id)} style={{
+                        padding: "10px 8px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+                        fontSize: 12, fontWeight: 700, border: "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(255,255,255,0.05)", color: "#fff" }}>
+                        {b.icon} {b.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <button onClick={() => verwijder(m)} style={{ marginTop: 16, background: "none", border: "none",
+                color: "rgba(248,113,113,0.7)", cursor: "pointer", fontSize: 12, fontFamily: "inherit", padding: 0 }}>
+                🗑 Mutatie verwijderen
+              </button>
             </div>
-          </>
-        }
+          );
+        })()}
       </Modal>
-    </>
+    </div>
   );
 }
 
@@ -3262,7 +3368,7 @@ function Diplomas({ data, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, onAddInkomst, onAddUitgave, onEditInkomst, onEditUitgave }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, bankmutaties }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -3359,7 +3465,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         "#": i + 1, "Datum": x.datum, "Behandeling": x.behandeling, "Klant": x.klant || "",
         "Betaalwijze": x.betaalwijze || "", "Prijs incl. BTW": x.prijs,
         "BTW-bedrag": x.btw, "Excl. BTW": x.exclBtw,
-        "Bank datum": x.bankDatum || "", "Bank omschrijving": x.bankOmschrijving || "",
+        "Betaald/ontvangen op": x.bankDatum || "", "Bank omschrijving": x.bankOmschrijving || "",
         "Bank bedrag": x.bankBedrag || "",
       }));
       const wsInc = XLSX.utils.json_to_sheet(incRows.length ? incRows : [{}]);
@@ -3375,7 +3481,7 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         "Notitie": x.notitie || "",
         "BTW verlegd": x.btwVerlegd ? `${x.btwVerlegdPerc}% (rubriek ${x.btwVerlegdType || "4b"})` : "",
         "BTW verlegd bedrag": x.btwVerlegd ? (x.btwVerlegdBedrag || 0) : "",
-        "Bank datum": x.bankDatum || "", "Bank omschrijving": x.bankOmschrijving || "",
+        "Betaald/ontvangen op": x.bankDatum || "", "Bank omschrijving": x.bankOmschrijving || "",
         "Bank bedrag": x.bankBedrag || "",
         "Bewijsstuk bekijken": x.bonPad ? "📎 Bekijk bon" : "",
         "Bewijsstuk downloaden": x.bonPad ? "⬇ Download bon" : "",
@@ -3457,6 +3563,27 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         XLSX.utils.book_append_sheet(wb, wsKm, "Kilometers");
       }
 
+      // Bankoverzicht
+      const bankFiltered = (bankmutaties || []).filter(x => inPeriode(x.datum));
+      if (bankFiltered.length) {
+        const boekingNaam = (mt) => {
+          const b = (mt.bestemming === "inkomst" ? inkomsten : mt.bestemming === "uitgave" ? uitgaven : [])
+            .find(x => x.id === mt.koppelId);
+          if (!b) return "";
+          const wie = b.klant || b.leverancier;
+          return `${b.behandeling || b.omschrijving || b.categorie || ""}${wie ? ` (${wie})` : ""}`;
+        };
+        const bankRows = [...bankFiltered].sort((a, b) => (a.datum || "").localeCompare(b.datum || "")).map((mt, i) => ({
+          "#": i + 1, "Datum": mt.datum, "Naam": mt.naam, "Omschrijving": mt.omschrijving,
+          "Bij (€)": mt.isBij ? mt.bedrag : "", "Af (€)": mt.isBij ? "" : mt.bedrag,
+          "Bestemming": mt.bestemming ? bestemmingTekst(mt.bestemming) : "NOG TE VERWERKEN",
+          "Gekoppelde boeking": boekingNaam(mt),
+        }));
+        const wsBank = XLSX.utils.json_to_sheet(bankRows);
+        styleHeader(wsBank, Object.keys(bankRows[0])); autoWidth(wsBank, bankRows);
+        XLSX.utils.book_append_sheet(wb, wsBank, "Bankoverzicht");
+      }
+
       downloadXlsx(wb, bestandsnaam);
     } finally {
       setExporting(false);
@@ -3478,12 +3605,6 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
         </div>
       </Card>
 
-      {/* Knab import */}
-      <KnabImport
-        onAddInkomst={onAddInkomst} onAddUitgave={onAddUitgave}
-        onEditInkomst={onEditInkomst} onEditUitgave={onEditUitgave}
-        inkomsten={inkomsten} uitgaven={uitgaven}
-      />
 
       {/* Prijslijst */}
       <Card>
@@ -4249,6 +4370,7 @@ export default function App() {
   const [geblokkeerd, setGeblokkeerd] = useState([]);
   const [ritten, setRitten] = useState([]);
   const [diplomas, setDiplomas] = useState([]);
+  const [bankmutaties, setBankmutaties] = useState([]);
   const IB_DEFAULTS = { salaris: "0", urencriterium: "ja", starter: "nee" };
   const [ibInst, setIbInstState] = useState(IB_DEFAULTS);
   const [salonInst, setSalonInst] = useState({
@@ -4280,6 +4402,7 @@ export default function App() {
       if (db.geblokkeerd) setGeblokkeerd(db.geblokkeerd);
       if (db.ritten) setRitten(db.ritten);
       if (db.diplomas) setDiplomas(db.diplomas);
+      if (db.bankmutaties) setBankmutaties(db.bankmutaties);
       if (db.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...db.ibInst }));
       setLoading(false);
     })();
@@ -4302,6 +4425,7 @@ export default function App() {
       if (nieuweData.geblokkeerd) setGeblokkeerd(nieuweData.geblokkeerd);
       if (nieuweData.ritten) setRitten(nieuweData.ritten);
       if (nieuweData.diplomas) setDiplomas(nieuweData.diplomas);
+      if (nieuweData.bankmutaties) setBankmutaties(nieuweData.bankmutaties);
       if (nieuweData.ibInst) setIbInstState(s => ({ ...IB_DEFAULTS, ...s, ...nieuweData.ibInst }));
       showToast("🔄 Data bijgewerkt");
     });
@@ -4667,6 +4791,15 @@ export default function App() {
     showToast("✓ Rit bijgewerkt");
   };
 
+  // ── Bank ──────────────────────────────────────────────────────────────────
+  const updateBank = async ({ bankmutaties: bm, inkomsten: ink, uitgaven: uit }) => {
+    const upd = {};
+    if (bm) { setBankmutaties(bm); upd.bankmutaties = bm; }
+    if (ink) { setInkomsten(ink); upd.inkomsten = ink; }
+    if (uit) { setUitgaven(uit); upd.uitgaven = uit; }
+    await persist(upd);
+  };
+
   // ── Diplomas ──────────────────────────────────────────────────────────────
   const addDiploma = async (item) => {
     const updated = [...(dbRef.current.diplomas || []), item];
@@ -4765,6 +4898,7 @@ export default function App() {
     { id: "bestellen", icon: "🛒", label: "Bestellen" },
     { id: "kilometers", icon: "🚗", label: "Kilometers" },
     { id: "btw",       icon: "📊", label: "BTW" },
+    { id: "bank",      icon: "🏦", label: "Bank" },
     { id: "diplomas",  icon: "🎓", label: "Diploma's" },
     { id: "meer",      icon: "⚙️", label: "Meer" },
   ];
@@ -4813,6 +4947,7 @@ export default function App() {
     bestellen: <Bestellijst items={bestellijst} onAdd={addBestelling} onToggle={toggleBestelling} onDelete={deleteBestelling} onEdit={editBestelling} />,
     kilometers: <KilometerRegistratie ritten={ritten} onAdd={addRit} onDelete={deleteRit} onEdit={editRit} />,
     btw:       <BTWOverzicht inkomsten={inkomsten} uitgaven={uitgaven} ibInst={ibInst} onUpdateIbInst={updateIbInst} ritten={ritten} />,
+    bank:      <Bank bankmutaties={bankmutaties} inkomsten={inkomsten} uitgaven={uitgaven} onUpdate={updateBank} />,
     diplomas:  <Diplomas data={diplomas} onAdd={addDiploma} onEdit={editDiploma} onDelete={deleteDiploma} />,
     meer:      <Meer prijslijst={prijslijst} onUpdatePrijslijst={updatePrijslijst}
                   inkomsten={inkomsten} uitgaven={uitgaven} klanten={klanten}
@@ -4821,8 +4956,7 @@ export default function App() {
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
                   onMaakVisitekaartje={maakVisitekaartje}
-                  onAddInkomst={addInkomst} onAddUitgave={addUitgave}
-                  onEditInkomst={editInkomst} onEditUitgave={editUitgave} />,
+                  bankmutaties={bankmutaties} />,
   };
 
   return (
