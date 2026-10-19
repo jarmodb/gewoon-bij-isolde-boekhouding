@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
-import { loadAll, saveAll, subscribeToChanges } from "./storage.js";
+import { loadAll, saveAll, subscribeToChanges, supabase } from "./storage.js";
 import { uploadNaarNAS, getBewijsstukUrl, getDeelbareBewijsstukUrl, getNucConfig, setNucConfig } from "./webdav.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -3368,7 +3368,7 @@ function Diplomas({ data, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MEER (instellingen + export)
 // ════════════════════════════════════════════════════════════════════════════
-function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, bankmutaties }) {
+function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, klanten, leveranciers, kleuren, ritten, syncStatus, onRestoreBackup, nucConfig, onUpdateNucConfig, salonInst, onUpdateSalonInst, onMaakVisitekaartje, bankmutaties, email, onUitloggen }) {
   const [editPrijzen, setEditPrijzen] = useState(false);
   const [localPrijzen, setLocalPrijzen] = useState(prijslijst);
   const [exporting, setExporting] = useState(false);
@@ -3602,6 +3602,17 @@ function Meer({ prijslijst, onUpdatePrijslijst, inkomsten, uitgaven, facturen, k
             <div style={{ fontSize: 12, color: C.muted }}>Data wordt opgeslagen via Supabase</div>
           </div>
           <SyncDot status={syncStatus} />
+        </div>
+      </Card>
+
+      {/* Account */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.label, marginBottom: 2 }}>Ingelogd als</div>
+            <div style={{ fontSize: 13, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</div>
+          </div>
+          <Btn small variant="secondary" onClick={onUitloggen}>Uitloggen</Btn>
         </div>
       </Card>
 
@@ -4338,7 +4349,7 @@ function KilometerRegistratie({ ritten, onAdd, onDelete, onEdit }) {
 // ════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════════════
-export default function App() {
+function Boekhouding({ email, onUitloggen }) {
   const [tab, setTab] = useState("home");
   const [toast, setToast] = useState({ msg: "", type: "success" });
   const [loading, setLoading] = useState(true);
@@ -4956,7 +4967,7 @@ export default function App() {
                   nucConfig={nucConfig} onUpdateNucConfig={updateNucConfig}
                   salonInst={salonInst} onUpdateSalonInst={updateSalonInst}
                   onMaakVisitekaartje={maakVisitekaartje}
-                  bankmutaties={bankmutaties} />,
+                  bankmutaties={bankmutaties} email={email} onUitloggen={onUitloggen} />,
   };
 
   return (
@@ -5071,4 +5082,79 @@ export default function App() {
       <Toast msg={toast.msg} type={toast.type} />
     </div>
   );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INLOGGEN
+// ════════════════════════════════════════════════════════════════════════════
+function Login() {
+  const [email, setEmail] = useState("");
+  const [wachtwoord, setWachtwoord] = useState("");
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState("");
+
+  const inloggen = async (e) => {
+    e.preventDefault();
+    setBezig(true);
+    setFout("");
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: wachtwoord });
+    if (error) {
+      setFout(/invalid|credentials/i.test(error.message)
+        ? "E-mailadres of wachtwoord klopt niet."
+        : "Inloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.");
+    }
+    setBezig(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", padding: 20, fontFamily: "'Nunito', sans-serif",
+      background: "linear-gradient(160deg,#0d0020,#1e0a3c,#2d1547)" }}>
+      <div style={{ fontSize: 48, marginBottom: 8 }}>💅</div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: "#fff", marginBottom: 4 }}>Gewoon bij Isolde</div>
+      <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Log in om verder te gaan</div>
+      <form onSubmit={inloggen} style={{ width: "100%", maxWidth: 360 }}>
+        <Card>
+          <Field label="E-mailadres">
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              autoComplete="username" required style={inputStyle} />
+          </Field>
+          <Field label="Wachtwoord">
+            <input type="password" value={wachtwoord} onChange={e => setWachtwoord(e.target.value)}
+              autoComplete="current-password" required style={inputStyle} />
+          </Field>
+          {fout && <div style={{ fontSize: 13, color: C.red, marginBottom: 12 }}>{fout}</div>}
+          <button type="submit" disabled={bezig || !email || !wachtwoord} style={{
+            width: "100%", padding: 14, border: "none", borderRadius: 12, cursor: "pointer",
+            fontFamily: "inherit", fontSize: 15, fontWeight: 800, color: "#fff",
+            background: `linear-gradient(135deg,${C.pink},${C.purple})`,
+            opacity: bezig || !email || !wachtwoord ? 0.5 : 1 }}>
+            {bezig ? "Bezig..." : "Inloggen"}
+          </button>
+        </Card>
+      </form>
+    </div>
+  );
+}
+
+export default function App() {
+  const [sessie, setSessie] = useState(undefined);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSessie(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSessie(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const uitloggen = async () => {
+    try { localStorage.removeItem("nagelsalon_backup"); localStorage.removeItem("nuc_config"); } catch {}
+    await supabase.auth.signOut();
+  };
+
+  if (sessie === undefined) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(160deg,#0d0020,#1e0a3c,#2d1547)", fontSize: 48 }}>💅</div>
+  );
+  if (!sessie) return <Login />;
+  return <Boekhouding email={sessie.user.email} onUitloggen={uitloggen} />;
 }

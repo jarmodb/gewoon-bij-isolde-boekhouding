@@ -22,10 +22,23 @@ async function backup() {
   const tijdstip = nu.toLocaleTimeString("nl-NL");
   console.log(`\n💾 Backup gestart: ${datum} ${tijdstip}`);
 
+  // Inloggen met het back-upaccount (BACKUP_EMAIL / BACKUP_PASSWORD in .env).
+  // Zonder die gegevens wordt de anonieme sleutel gebruikt (werkt alleen zolang de database open staat).
+  let token = SUPABASE_KEY;
+  if (process.env.BACKUP_EMAIL && process.env.BACKUP_PASSWORD) {
+    const login = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: process.env.BACKUP_EMAIL, password: process.env.BACKUP_PASSWORD }),
+    });
+    if (!login.ok) throw new Error(`Inloggen voor back-up mislukt: ${login.status}`);
+    token = (await login.json()).access_token;
+  }
+
   // Haal data op uit Supabase
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/boekhouding?id=eq.1&select=data,updated_at`,
-    { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+    { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` } }
   );
 
   if (!res.ok) throw new Error(`Supabase fout: ${res.status}`);

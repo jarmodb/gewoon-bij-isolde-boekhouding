@@ -72,9 +72,12 @@ try {
     $api = ""
     while (-not $api) { $api = (Read-Host "   API_KEY (verplicht)").Trim() }
     $viewer = (Read-Host "   VIEWER_KEY (alleen-lezen sleutel voor de boekhouder, leeg = uit)").Trim()
+    $backupMail = (Read-Host "   BACKUP_EMAIL (Supabase-account voor de nachtelijke back-up, leeg = overslaan)").Trim()
+    $backupWw = ""
+    if ($backupMail) { $backupWw = (Read-Host "   BACKUP_PASSWORD").Trim() }
     $map = (Read-Host "   Map voor bonnetjes en facturen [C:\nagelsalon\bewijsstukken]").Trim()
     if (-not $map) { $map = "C:\nagelsalon\bewijsstukken" }
-    $regels = @("API_KEY=$api", "VIEWER_KEY=$viewer", "UPLOAD_MAP=$map")
+    $regels = @("API_KEY=$api", "VIEWER_KEY=$viewer", "UPLOAD_MAP=$map", "BACKUP_EMAIL=$backupMail", "BACKUP_PASSWORD=$backupWw")
     Set-Content -Path $envPad -Value $regels -Encoding ascii
     Ok ".env aangemaakt"
   }

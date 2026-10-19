@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
   try {
     const resp = await fetch(
       `${SUPABASE_URL}/rest/v1/boekhouding?id=eq.1&select=data`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY}` } }
     );
     if (!resp.ok) throw new Error(`Supabase gaf status ${resp.status}`);
     const rows = await resp.json();
